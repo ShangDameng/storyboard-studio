@@ -1983,6 +1983,46 @@ function classifyMove(frames) {
   return { move: move, motion: Math.round(m * 10) / 10, zoom: Math.round(z * 10) / 10 };
 }
 /* 切点性质 → 切 / 叠化 / 淡入淡出 */
+/* 单帧初判：景别（靠中心区域肤色占比 ≈ 人物占画面比例）+ 机位角度（靠水平边缘/地平线位置） */
+function analyzeLook(ctx, w, h) {
+  let d;
+  try { d = ctx.getImageData(0, 0, w, h).data; } catch (e) { return null; }
+  let skin = 0, n = 0;
+  const x0 = Math.floor(w * 0.2), x1 = Math.floor(w * 0.8);
+  const y0 = Math.floor(h * 0.12), y1 = Math.floor(h * 0.88);
+  for (let y = y0; y < y1; y += 2) {
+    for (let x = x0; x < x1; x += 2) {
+      const p = (y * w + x) * 4, r = d[p], g = d[p + 1], b = d[p + 2];
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      if (r > 90 && g > 35 && b > 18 && r > g && r > b && (mx - mn) > 14 && (r - g) > 12) skin++;
+      n++;
+    }
+  }
+  const skinRatio = n ? skin / n : 0;
+  let bestRow = -1, bestVal = 0;
+  for (let y = 2; y < h - 2; y++) {
+    let s = 0;
+    for (let x = 0; x < w; x += 2) {
+      const p1 = ((y - 1) * w + x) * 4, p2 = ((y + 1) * w + x) * 4;
+      s += Math.abs(d[p1] - d[p2]) + Math.abs(d[p1 + 1] - d[p2 + 1]) + Math.abs(d[p1 + 2] - d[p2 + 2]);
+    }
+    if (s > bestVal) { bestVal = s; bestRow = y; }
+  }
+  const horizon = bestRow < 0 ? 0.5 : bestRow / Math.max(1, h);
+  const strength = bestVal / Math.max(1, (w / 2)) / 255;
+  let size = "远景";
+  if (skinRatio >= 0.42) size = "特写";
+  else if (skinRatio >= 0.24) size = "近景";
+  else if (skinRatio >= 0.11) size = "中景";
+  else if (skinRatio >= 0.04) size = "全景";
+  let angle = "平视", angleKnown = false;
+  if (strength > 0.1) {                       // 有明显水平边缘，才敢判断俯仰
+    angleKnown = true;
+    angle = horizon < 0.34 ? "俯视" : (horizon > 0.66 ? "仰视" : "平视");
+  }
+  return { size: size, angle: angle, angleKnown: angleKnown,
+           skin: Math.round(skinRatio * 100), horizon: Math.round(horizon * 100) };
+}
 function classifyTransition(samples, cutIdx) {
   const d = (i) => (i > 0 && i < samples.length) ? sigDistance(samples[i].sig, samples[i - 1].sig) : 0;
   const peak = d(cutIdx);
@@ -2176,7 +2216,8 @@ async function captureThumbs(segs, cb, cancelled) {
     ctx.drawImage(videoEl, 0, 0, cv.width, cv.height);
     let url = "";
     try { url = cv.toDataURL("image/jpeg", 0.72); } catch (e) { url = ""; }
-    out.push(url ? { url, w: cv.width, h: cv.height } : null);
+    const look = analyzeLook(ctx, cv.width, cv.height);      // 顺便初判景别 / 角度
+    out.push(url ? { url, w: cv.width, h: cv.height, look: look } : null);
     cb(i / segs.length, mid);
   }
   return out;
@@ -2305,9 +2346,11 @@ async function runVideoScan() {
     setScanProgress(1, `完成：${segs.length} 个镜头`);
     setTimeout(() => { if (!scanBusy) $("#vidDlg").close(); }, 600);
     const moves = {}; segs.forEach((g) => { moves[g.move] = (moves[g.move] || 0) + 1; });
+    const sizes = {}; thumbs.forEach((t) => { const k = (t && t.look && t.look.size) || "中景"; sizes[k] = (sizes[k] || 0) + 1; });
     const rhythm = segs.length > 1 ? "平均镜头 " + (totalDur() / segs.length).toFixed(1) + "s" : "";
     state.video = Object.assign({}, state.video || {}, { autoSummary: { shots: segs.length, moves: moves, rhythm: rhythm } });
-    toast(`已拆出 ${segs.length} 个镜头（${rhythm}，运镜：` + Object.entries(moves).map(([k, v]) => k + "×" + v).join("、") + "）。点 ▶ 可边看边对。"
+    toast(`已拆出 ${segs.length} 个镜头（${rhythm}）。景别初判：` + Object.entries(sizes).map(([k, v]) => k + "×" + v).join("、")
+      + "；运镜：" + Object.entries(moves).map(([k, v]) => k + "×" + v).join("、") + "。点 ▶ 可边看边对，景别/角度可手动改。"
       + (scan.mode === "loose" ? "（本机取帧不稳定，画面截图可能有偏差，可换「快速」采样再试）" : ""));
   } catch (e) {
     const msg = String((e && e.message) || e);
@@ -2324,14 +2367,18 @@ async function runVideoScan() {
 function applyVideoShots(segs, thumbs) {
   const mode = $("#scanMode").value;
   const shots = segs.map((g, i) => {
+    const t = thumbs[i];
     const s = newShot({
       duration: Math.max(0.2, Math.round((g.end - g.start) * 100) / 100),
       videoStart: Math.round(g.start * 100) / 100,
+      size: (t && t.look && t.look.size) ? t.look.size : "中景",
+      angle: (t && t.look && t.look.angle) ? t.look.angle : "平视",
       move: g.move || "固定",
       transition: g.transition || "切",
-      note: (g.motion ? "自动识别：运镜 " + g.move + "（运动量 " + g.motion + "）" : "")
+      note: "自动识别：景别「" + ((t && t.look && t.look.size) || "中景") + "」· 角度「" + ((t && t.look && t.look.angle) || "平视") + "」"
+        + (t && t.look && !t.look.angleKnown ? "（画面里没有明显的地平线，角度按平视处理，请人工确认）" : "")
+        + "· 运镜「" + (g.move || "固定") + "」"
     });
-    const t = thumbs[i];
     if (t && t.url) {
       const id = putImage(t.url);
       s.images = [Object.assign(rowFromShot(s), { imgId: id, w: t.w, h: t.h, url: "" })];
