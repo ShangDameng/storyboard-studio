@@ -167,6 +167,15 @@
   td textarea{min-height:54px}
   th:last-child,td:last-child{position:sticky;right:0;background:#fff;border-left:1px solid var(--line)}
   .tbl-acts{display:flex;gap:4px;flex-direction:column;white-space:nowrap}
+  /* 表格列：表头可拖动排序；自定义列可改标题、可删 */
+  .tbl-tools{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:#f8fafc}
+  #tableWrap th{cursor:grab}
+  #tableWrap th:active{cursor:grabbing}
+  .colhead{display:flex;align-items:center;gap:4px;min-width:0}
+  .colgrip{color:#c3cad8;font-size:12px}
+  #tableWrap th.custom .colname{width:110px;padding:2px 6px;font-size:12px;font-weight:600;background:#fff}
+  #tableWrap th.dragging{opacity:.45}
+  #tableWrap th.drop-target{box-shadow:inset 3px 0 0 var(--accent)}
 
   /* 表格里的画面单元格 */
   .cellimg{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
@@ -774,6 +783,7 @@ function persistPayload() {
    旧版本曾经用 null 表示"还没放图的空行"，新代码按对象读，必须先规范化。 */
 function normalizeShots() {
   if (!Array.isArray(state.shots)) { state.shots = []; return; }
+  ensureCols();
   state.shots.forEach((s) => {
     if (!s || typeof s !== "object") return;
     if (!Array.isArray(s.images)) s.images = [];
@@ -797,6 +807,18 @@ function normalizeShots() {
       merged.url = merged.url || "";
       merged.picture = merged.picture || "";
       merged.dialogue = merged.dialogue || "";
+      /* 老版本的「行内自定义字段」自动升级成自定义列 */
+      if (!merged.cols || typeof merged.cols !== "object") merged.cols = {};
+      if (Array.isArray(merged.extra) && merged.extra.length) {
+        merged.extra.forEach((x) => {
+          if (!x || typeof x !== "object") return;
+          const label = String(x.label || "").trim() || "自定义列";
+          let col = state.cols.find((c) => c.custom && (c.label || "") === label);
+          if (!col) { col = { id: "c" + uid(), label: label, custom: true }; state.cols.push(col); }
+          if (!merged.cols[col.id]) merged.cols[col.id] = String(x.value || "");
+        });
+      }
+      delete merged.extra;
       return merged;
     });
     if (s.images.length) syncLegacyImage(s);
@@ -821,25 +843,57 @@ function stackAspect(s) {
 }
 /* ---------- 多行画面的 HTML ---------- */
 /* 自定义字段：一行画面可以在「备注」后面加任意多个「标题 + 内容」 */
+/* ============ 表格列：可拖动排序、可以自己加列 ============
+   state.cols 是有序的列定义；自定义列的值存在每行 row.cols[列id] 里。
+   拖动表头即可换列位置，列里的内容跟着列走。 */
+const BUILTIN_COLS = [
+  { id: "no",         label: "镜号",        type: "no" },
+  { id: "scene",      label: "场次",        type: "scene" },
+  { id: "img",        label: "画面",        type: "img" },
+  { id: "picture",    label: "画面内容",    type: "text",   key: "picture" },
+  { id: "size",       label: "景别",        type: "select", key: "size", list: "SIZES" },
+  { id: "angle",      label: "角度",        type: "select", key: "angle", list: "ANGLES" },
+  { id: "move",       label: "运镜",        type: "select", key: "move", list: "MOVES" },
+  { id: "duration",   label: "时长",        type: "num",    key: "duration" },
+  { id: "dialogue",   label: "台词 / 旁白", type: "text",   key: "dialogue" },
+  { id: "sfx",        label: "音效 / BGM",  type: "text",   key: "sfx" },
+  { id: "transition", label: "转场",        type: "trans",  key: "transition" },
+  { id: "note",       label: "备注",        type: "text",   key: "note" }
+];
+function ensureCols() {
+  if (!Array.isArray(state.cols) || !state.cols.length) {
+    state.cols = BUILTIN_COLS.map((c) => Object.assign({}, c));
+  } else {
+    const have = new Set(state.cols.map((c) => c.id));
+    BUILTIN_COLS.forEach((c) => { if (!have.has(c.id)) state.cols.push(Object.assign({}, c)); });
+    state.cols = state.cols.filter((c) => c.custom || BUILTIN_COLS.some((b) => b.id === c.id));
+  }
+  return state.cols;
+}
+const customCols = () => ensureCols().filter((c) => c.custom);
+function cellValue(r, col) {
+  if (!r) return "";
+  if (col.custom) return (r.cols || {})[col.id] || "";
+  return r[col.key] == null ? "" : r[col.key];
+}
+function setCellValue(r, col, v) {
+  if (col.custom) { if (!r.cols) r.cols = {}; r.cols[col.id] = v; }
+  else r[col.key] = v;
+}
+/* 卡片视图：自定义列显示成普通字段 */
 function extrasHTML(s, k, im) {
-  const list = Array.isArray(im.extra) ? im.extra : [];
   return `<div class="extras">
-    ${list.map((x, j) => `<div class="extra-row">
-      <input data-id="${s.id}" data-field="extraLabel" data-slot="${k}" data-idx="${j}" value="${esc(x.label || "")}" placeholder="标题">
-      <input data-id="${s.id}" data-field="extraValue" data-slot="${k}" data-idx="${j}" value="${esc(x.value || "")}" placeholder="内容">
-      <button class="mini" data-act="delextra" data-id="${s.id}" data-slot="${k}" data-idx="${j}" title="删掉这个字段">✕</button>
-    </div>`).join("")}
-    <button class="addrow small" data-act="addextra" data-id="${s.id}" data-slot="${k}">＋ 加一个自定义字段（标题 + 内容）</button>
+    ${customCols().map((c) => `<label class="fld"><span>${esc(c.label || "自定义列")}</span>
+      <input data-id="${s.id}" data-field="col" data-col="${c.id}" data-slot="${k}" value="${esc(cellValue(im, c))}" placeholder="${esc(c.label || "")}">
+    </label>`).join("")}
   </div>`;
 }
-/* 备注 + 自定义字段，合成一段文字给导出 / 打印用 */
+/* 备注 + 自定义列，合成一段文字给打印 / 导出用 */
 function noteWithExtras(r) {
-  const parts = [];
-  if (r.note) parts.push(String(r.note).trim());
-  (Array.isArray(r.extra) ? r.extra : []).forEach((x) => {
-    if ((x.label && String(x.label).trim()) || (x.value && String(x.value).trim())) {
-      parts.push((x.label || "").trim() + "：" + (x.value || "").trim());
-    }
+  const parts = r && r.note ? [String(r.note).trim()] : [];
+  if (r) customCols().forEach((c) => {
+    const v = String(cellValue(r, c) || "").trim();
+    if (v) parts.push((c.label || "自定义列") + "：" + v);
   });
   return parts.join(" ｜ ");
 }
@@ -1044,59 +1098,72 @@ function cardHTML(s, i) {
 </article>`;
 }
 function tableHTML() {
-  const head = ["镜号","场次","画面","画面内容","景别","角度","运镜","时长","台词 / 旁白","音效 / BGM","转场","备注","操作"];
-  /* 一个"画面行"= 一个表格行：图片和它这一行的所有字段天然在同一水平线上；
-     一个镜号有多行时，镜号 / 场次 / 操作 用 rowspan 合并 */
+  const cols = ensureCols();
+  const head = cols.map(colHeadHTML).join("") + `<th class="ophead">操作</th>`;
   const rows = state.shots.map((s, i) => {
     const list = shotImages(s).length ? shotImages(s) : [rowFromShot(s)];
     const span = list.length;
     return list.map((r, k) => {
       const first = k === 0, last = k === span - 1;
-      const box = (key, kind) => {
-        if (kind === "select") return `<select data-id="${s.id}" data-field="row" data-key="${key}" data-slot="${k}">${opts(key === "size" ? SIZES : key === "angle" ? ANGLES : key === "move" ? MOVES : TRANS, r[key])}</select>`;
-        if (kind === "num") return `<input type="number" min="0" step="0.5" style="width:78px" data-id="${s.id}" data-field="row" data-key="${key}" data-slot="${k}" value="${+(r[key] || 0)}">`;
-        if (kind === "input") return `<input data-id="${s.id}" data-field="row" data-key="${key}" data-slot="${k}" value="${esc(r[key] || "")}">`;
-        return `<textarea data-id="${s.id}" data-field="row" data-key="${key}" data-slot="${k}" placeholder="${rowLabel(k)}">${esc(r[key] || "")}</textarea>`;
-      };
-      return `<tr class="${first ? "tr-first" : ""}">
-        ${first ? `<td class="n" rowspan="${span}">${i + 1}</td>
-          <td rowspan="${span}"><input data-id="${s.id}" data-field="scene" value="${esc(s.scene)}"></td>` : ""}
-        <td class="imgcell">
-          <div class="cellimg">
-            <span class="thumbwrap">
-              <span class="slotlabel">${rowLabel(k)}</span>
-              <button type="button" class="thumb thumb-tbl" data-id="${s.id}" data-slot="${k}" data-act="lb"
-                style="aspect-ratio:${imgAspect(r).toFixed(4)}" title="点开看大图；也可 Ctrl+V 粘贴 / 拖入图片">
-                ${rowHasImg(r) ? `<img src="${rowSrc(r)}" alt="镜头 ${i + 1} ${rowLabel(k)}">` : `<span class="thumb-empty"><span>＋ 画面</span></span>`}
-              </button>
-            </span>
-            <div class="row">
-              <button class="mini2" data-act="img" data-id="${s.id}" data-slot="${k}">上传</button>
-              <button class="mini2" data-act="imgclear" data-id="${s.id}" data-slot="${k}">清除</button>
-            </div>
-            ${last && list.length < MAX_ROWS ? `<button class="addrow" data-act="addrow" data-id="${s.id}">＋ 加一行（${Math.max(list.length, 1) + 1}/${MAX_ROWS}）</button>` : ""}
-            ${last && list.length >= MAX_ROWS ? `<button class="mini2" data-act="delrow" data-id="${s.id}">删最后一行</button>` : ""}
-          </div>
-        </td>
-        <td>${box("picture")}</td>
-        <td>${box("size", "select")}</td>
-        <td>${box("angle", "select")}</td>
-        <td>${box("move", "select")}</td>
-        <td>${box("duration", "num")}</td>
-        <td>${box("dialogue")}</td>
-        <td>${box("sfx")}</td>
-        <td><input list="transList" data-id="${s.id}" data-field="row" data-key="transition" data-slot="${k}" value="${esc(r.transition || "切")}" placeholder="可选可输入"></td>
-        <td>${box("note", "input")}${extrasHTML(s, k, r)}</td>
-        ${first ? `<td rowspan="${span}"><div class="tbl-acts">
-          ${state.video ? `<button class="mini2" data-act="play" data-id="${s.id}">▶</button>` : ""}
-          <button class="mini2" data-act="up" data-id="${s.id}">↑</button>
-          <button class="mini2" data-act="down" data-id="${s.id}">↓</button>
-          <button class="mini2" data-act="del" data-id="${s.id}">删除</button>
-        </div></td>` : ""}
-      </tr>`;
+      const cells = cols.map((col) => {
+        if (col.type === "no") return first ? `<td class="n" rowspan="${span}">${i + 1}</td>` : "";
+        if (col.type === "scene") return first ? `<td rowspan="${span}"><input data-id="${s.id}" data-field="scene" value="${esc(s.scene)}"></td>` : "";
+        if (col.type === "img") return `<td class="imgcell">${imgCellHTML(s, i, r, k, last, list.length)}</td>`;
+        return colCellHTML(s, r, k, col);
+      }).join("");
+      const ops = first ? `<td rowspan="${span}"><div class="tbl-acts">
+        ${state.video ? `<button class="mini2" data-act="play" data-id="${s.id}">▶</button>` : ""}
+        <button class="mini2" data-act="up" data-id="${s.id}">↑</button>
+        <button class="mini2" data-act="down" data-id="${s.id}">↓</button>
+        <button class="mini2" data-act="del" data-id="${s.id}">删除</button>
+      </div></td>` : "";
+      return `<tr class="${first ? "tr-first" : ""}">${cells}${ops}</tr>`;
     }).join("");
   }).join("");
-  return `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
+  return `<div class="tbl-tools">
+      <span class="hint">拖动表头可以调整列的顺序（列里的内容会跟着一起移动）</span>
+      <button class="mini2" data-act="addcol">＋ 加一列</button>
+    </div>
+    <table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+/* 表头：拖动排序；自定义列可以改标题、可以删 */
+function colHeadHTML(col) {
+  const inner = col.custom
+    ? `<input class="colname" data-field="colname" data-col="${col.id}" value="${esc(col.label || "")}" title="改这一列的标题">
+       <button class="mini" data-act="delcol" data-col="${col.id}" title="删掉这一列">✕</button>`
+    : esc(col.label);
+  return `<th draggable="true" data-col="${col.id}" class="${col.custom ? "custom" : ""}">
+    <span class="colhead"><span class="colgrip">⠿</span>${inner}</span></th>`;
+}
+/* 普通单元格（按列类型渲染） */
+function colCellHTML(s, r, k, col) {
+  const attr = `data-id="${s.id}" data-field="row" data-key="${col.key}" data-slot="${k}"`;
+  if (col.type === "select") {
+    const list = col.list === "SIZES" ? SIZES : col.list === "ANGLES" ? ANGLES : MOVES;
+    return `<td><select ${attr}>${opts(list, r[col.key])}</select></td>`;
+  }
+  if (col.type === "num") return `<td><input type="number" min="0" step="0.5" style="width:78px" ${attr} value="${+(r.duration || 0)}"></td>`;
+  if (col.type === "trans") return `<td><input list="transList" ${attr} value="${esc(r.transition || "切")}" placeholder="可选可输入"></td>`;
+  if (col.custom) return `<td><textarea data-id="${s.id}" data-field="col" data-col="${col.id}" data-slot="${k}" placeholder="${esc(col.label || "")}">${esc(cellValue(r, col))}</textarea></td>`;
+  return `<td><textarea ${attr} placeholder="${rowLabel(k)}">${esc(r[col.key] || "")}</textarea></td>`;
+}
+/* 画面列：缩略图 + 上传/清除 + 加行 */
+function imgCellHTML(s, i, r, k, last, count) {
+  return `<div class="cellimg">
+    <span class="thumbwrap">
+      <span class="slotlabel">${rowLabel(k)}</span>
+      <button type="button" class="thumb thumb-tbl" data-id="${s.id}" data-slot="${k}" data-act="lb"
+        style="aspect-ratio:${imgAspect(r).toFixed(4)}" title="点开看大图；也可 Ctrl+V 粘贴 / 拖入图片">
+        ${rowHasImg(r) ? `<img src="${rowSrc(r)}" alt="镜头 ${i + 1} ${rowLabel(k)}">` : `<span class="thumb-empty"><span>＋ 画面</span></span>`}
+      </button>
+    </span>
+    <div class="row">
+      <button class="mini2" data-act="img" data-id="${s.id}" data-slot="${k}">上传</button>
+      <button class="mini2" data-act="imgclear" data-id="${s.id}" data-slot="${k}">清除</button>
+    </div>
+    ${last && count < MAX_ROWS ? `<button class="addrow" data-act="addrow" data-id="${s.id}">＋ 加一行（${Math.max(count, 1) + 1}/${MAX_ROWS}）</button>` : ""}
+    ${last && count >= MAX_ROWS ? `<button class="mini2" data-act="delrow" data-id="${s.id}">删最后一行</button>` : ""}
+  </div>`;
 }
 function renderTimeline() {
   const tl = $("#timeline");
@@ -1476,29 +1543,39 @@ function download(name, content, mime) {
 }
 const safeName = () => (state.name || "分镜").replace(/[\\/:*?"<>|]/g, "_");
 function rows() {
-  return state.shots.map((s, i) => {
+  /* 导出按当前表格列顺序走（画面列不参与，图片在 JSON 里） */
+  const cols = ensureCols().filter((c) => c.type !== "img");
+  const head = cols.map((c) => c.id === "no" ? "镜号" : c.id === "duration" ? "时长(秒)" : (c.label || c.id));
+  const di = head.indexOf("时长(秒)");
+  if (di >= 0) head.splice(di + 1, 0, "起始时间");
+  const data = state.shots.map((s, i) => {
     const t0 = startAt(i);
-    return [i + 1, s.scene,
-      shotField(s, "size"), shotField(s, "angle"), shotField(s, "move"), durStr(s.duration), mmss(t0),
-      shotField(s, "picture"), shotField(s, "dialogue"), shotField(s, "sfx"), shotField(s, "transition"), shotNote(s)];
+    const vals = cols.map((c) => {
+      if (c.id === "no") return i + 1;
+      if (c.id === "scene") return s.scene;
+      if (c.id === "duration") return durStr(s.duration);
+      if (c.id === "note") return shotNote(s);
+      return shotField(s, c.key || c.id);
+    });
+    if (di >= 0) vals.splice(di + 1, 0, mmss(t0));
+    return vals;
   });
+  return [head].concat(data);
 }
 const durStr = (d) => String(Math.round((+d || 0) * 10) / 10);
 function exportCsv() {
   if (!state.shots.length) { toast("还没有分镜可导出。", null, "warn"); return; }
-  const head = ["镜号","场次","景别","机位角度","运镜","时长(秒)","起始时间","画面内容","台词/旁白","音效/BGM","转场","备注"];
   const q = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
-  const csv = [head, ...rows()].map((r) => r.map(q).join(",")).join("\r\n");
+  const csv = rows().map((r) => r.map(q).join(",")).join("\r\n");   // 第一行是表头，列顺序跟随表格
   download(safeName() + "-分镜表.csv", "\ufeff" + csv, "text/csv;charset=utf-8");
   toast("已导出 CSV（Excel 可直接打开）。");
 }
 function exportMd() {
   if (!state.shots.length) { toast("还没有分镜可导出。", null, "warn"); return; }
-  const head = ["镜号","场次","景别","角度","运镜","时长","画面内容","台词/旁白","音效","转场","备注"];
   const cell = (v) => String(v == null ? "" : v).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
-  const body = state.shots.map((s, i) => [i + 1, s.scene,
-    shotField(s, "size"), shotField(s, "angle"), shotField(s, "move"), durStr(s.duration) + "s",
-    shotField(s, "picture"), shotField(s, "dialogue"), shotField(s, "sfx"), shotField(s, "transition"), shotNote(s)].map(cell));
+  const matrix = rows();
+  const head = matrix[0].map(cell);
+  const body = matrix.slice(1).map((r) => r.map(cell));
   const md = [`# ${state.name} · 分镜表`, ``,
     `- 镜头数：${state.shots.length}　总时长：${mmss(totalDur())}　生成日期：${new Date().toLocaleDateString("zh-CN")}`, ``,
     `| ${head.join(" | ")} |`, `|${head.map(() => "---").join("|")}|`,
@@ -2143,20 +2220,22 @@ function bind() {
           const ims = shotImages(s);
           if (ims.length) { ims.pop(); syncLegacyImage(s); renderShots(); save(); }
         }
-        else if (b.dataset.act === "addextra") {
-          const s = shotById(id); if (!s) return;
-          const rows = shotImages(s);
-          const k = +(b.dataset.slot || 0);
-          while (rows.length <= k) rows.push(rows.length ? blankRow(rows[rows.length - 1]) : rowFromShot(s));
-          if (!Array.isArray(rows[k].extra)) rows[k].extra = [];
-          rows[k].extra.push({ label: "", value: "" });
+        else if (b.dataset.act === "addcol") {
+          const label = prompt("新的一列叫什么？例如：道具、参考片、注意事项", "");
+          if (label == null) return;
+          state.cols.push({ id: "c" + uid(), label: (label.trim() || "新列"), custom: true });
           renderShots(); save();
+          toast("已加一列「" + (label.trim() || "新列") + "」，拖动表头可以调位置。");
         }
-        else if (b.dataset.act === "delextra") {
-          const s = shotById(id); if (!s) return;
-          const rows = shotImages(s);
-          const row = rows[+(b.dataset.slot || 0)];
-          if (row && Array.isArray(row.extra)) { row.extra.splice(+(b.dataset.idx || 0), 1); renderShots(); save(); }
+        else if (b.dataset.act === "delcol") {
+          const cid = b.dataset.col;
+          const col = (state.cols || []).find((c) => c.id === cid);
+          if (!col) return;
+          if (!confirm("删掉「" + (col.label || "自定义列") + "」这一列？列里的内容也会一起删除。")) return;
+          state.cols = state.cols.filter((c) => c.id !== cid);
+          state.shots.forEach((sh) => shotImages(sh).forEach((r) => { if (r && r.cols) delete r.cols[cid]; }));
+          renderShots(); save();
+          toast("已删掉这一列。");
         }
         else if (b.dataset.act === "gotab") {
           if ((b.dataset.goto || "script") === "script") openScriptPanel(); else setTab(b.dataset.goto);
@@ -2220,6 +2299,19 @@ function bind() {
       while (row.extra.length <= j) row.extra.push({ label: "", value: "" });
       row.extra[j][f === "extraLabel" ? "label" : "value"] = el.value;
       scheduleSave();
+      return;
+    }
+    if (f === "col") {
+      const rows = shotImages(s);
+      const k = +(el.dataset.slot || 0);
+      while (rows.length <= k) rows.push(rows.length ? blankRow(rows[rows.length - 1]) : rowFromShot(s));
+      setCellValue(rows[k], { id: el.dataset.col, custom: true }, el.value);
+      scheduleSave();
+      return;
+    }
+    if (f === "colname") {
+      const col = ensureCols().find((c) => c.id === el.dataset.col);
+      if (col) { col.label = el.value; scheduleSave(); }
       return;
     }
     if (f === "duration") s.duration = half(clamp(parseFloat(el.value) || 0, 0.5, 120));
@@ -2301,6 +2393,42 @@ function bind() {
   document.addEventListener("dragend", () => {
     dragId = null;
     shots.querySelectorAll(".shot").forEach((x) => (x.style.borderTop = ""));
+  });
+
+  /* 表格：拖动表头调整列顺序（列里的内容跟着列走） */
+  let dragCol = null;
+  wrap.addEventListener("dragstart", (e) => {
+    const th = e.target.closest("th[data-col]"); if (!th) return;
+    dragCol = th.dataset.col;
+    th.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", dragCol); } catch (err) {}
+  });
+  wrap.addEventListener("dragover", (e) => {
+    const th = e.target.closest("th[data-col]");
+    if (!th || !dragCol || th.dataset.col === dragCol) return;
+    e.preventDefault();
+    th.classList.add("drop-target");
+  });
+  wrap.addEventListener("dragleave", (e) => {
+    const th = e.target.closest("th[data-col]"); if (th) th.classList.remove("drop-target");
+  });
+  wrap.addEventListener("drop", (e) => {
+    const th = e.target.closest("th[data-col]");
+    if (!th || !dragCol) return;
+    e.preventDefault();
+    const from = ensureCols().findIndex((c) => c.id === dragCol);
+    const to = ensureCols().findIndex((c) => c.id === th.dataset.col);
+    dragCol = null;
+    if (from < 0 || to < 0 || from === to) { renderShots(); return; }
+    const [item] = state.cols.splice(from, 1);
+    state.cols.splice(to, 0, item);
+    renderShots(); save();
+    toast("列顺序已调整：" + state.cols.map((c) => c.label).join(" → "));
+  });
+  wrap.addEventListener("dragend", () => {
+    dragCol = null;
+    wrap.querySelectorAll("th").forEach((t) => t.classList.remove("dragging", "drop-target"));
   });
 
   $("#timeline").addEventListener("click", (e) => {
