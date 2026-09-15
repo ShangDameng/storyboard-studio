@@ -39,7 +39,7 @@ powershell -NoProfile -Command "try { $r = Test-NetConnection github.com -Port 4
 
 echo [7/7] 尝试访问仓库 / 推送 >> "%OUT%"
 git ls-remote origin >> "%OUT%" 2>&1
-git push 2>&1 | more >> "%OUT%" 2>&1
+git push >> "%OUT%" 2>&1
 
 echo. >> "%OUT%"
 echo [本地常见代理端口探测] >> "%OUT%"
