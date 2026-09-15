@@ -3,6 +3,9 @@ chcp 65001 >nul
 cd /d "%~dp0"
 title 分镜台 - 第一次推送到 GitHub
 
+rem 这个文件夹的 git 仓库可能是别的账号创建的，Git 会因此拒绝操作；按官方建议加个白名单
+git config --global --get-all safe.directory 2>nul | findstr /i /c:"%CD%" >nul 2>nul || git config --global --add safe.directory "%CD%" >nul 2>nul
+
 rem ===== 用户名 / 仓库名不对就改这两行 =====
 set GH_USER=ShangDameng
 set GH_REPO=storyboard-studio
