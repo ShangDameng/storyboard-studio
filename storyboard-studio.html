@@ -166,15 +166,15 @@
   td input,td select,td textarea{padding:5px 7px;font-size:13px}
   td textarea{min-height:54px}
   /* 表格：列宽按「列 id」定，拖动换列顺序也不受影响；景别/角度/运镜加宽，画面内容/台词加大 */
-  #tableWrap table{min-width:1860px}
+  #tableWrap table{min-width:1480px}
   #tableWrap th[data-col="size"],#tableWrap td[data-col="size"],
   #tableWrap th[data-col="angle"],#tableWrap td[data-col="angle"],
   #tableWrap th[data-col="move"],#tableWrap td[data-col="move"]{min-width:140px}
   #tableWrap th[data-col="duration"],#tableWrap td[data-col="duration"]{min-width:104px}
   #tableWrap th[data-col="picture"],#tableWrap td[data-col="picture"],
-  #tableWrap th[data-col="dialogue"],#tableWrap td[data-col="dialogue"]{min-width:440px}
+  #tableWrap th[data-col="dialogue"],#tableWrap td[data-col="dialogue"]{min-width:220px}
   #tableWrap td[data-col="picture"] textarea,#tableWrap td[data-col="dialogue"] textarea{min-height:320px}
-  #tableWrap td[data-col="sfx"] textarea{min-height:220px}
+  #tableWrap td[data-col="sfx"] textarea{min-height:110px}
   #tableWrap td[data-col="note"] input{min-width:190px}
   #tableWrap th[data-col="scene"],#tableWrap td[data-col="scene"]{min-width:150px}
   #tableWrap th[data-col="sfx"],#tableWrap td[data-col="sfx"],
@@ -939,7 +939,7 @@ function imgStackHTML(s, i) {
           <label class="fld"><span>景别</span><select data-id="${s.id}" data-field="row" data-key="size" data-slot="${k}">${opts(SIZES, im.size)}</select></label>
           <label class="fld"><span>机位角度</span><select data-id="${s.id}" data-field="row" data-key="angle" data-slot="${k}">${opts(ANGLES, im.angle)}</select></label>
           <label class="fld"><span>运镜</span><select data-id="${s.id}" data-field="row" data-key="move" data-slot="${k}">${opts(MOVES, im.move)}</select></label>
-          <label class="fld"><span>转场（可自定义输入）</span><input list="transList" data-id="${s.id}" data-field="row" data-key="transition" data-slot="${k}" value="${esc(im.transition || "切")}" placeholder="选一个或直接输入"></label>
+          <label class="fld"><span>转场</span><select data-id="${s.id}" data-field="row" data-key="transition" data-slot="${k}">${transitionOptionsHTML(im.transition)}</select></label>
           <label class="fld"><span>时长（秒）</span><input type="number" min="0" step="0.5" data-id="${s.id}" data-field="row" data-key="duration" data-slot="${k}" value="${+(im.duration || 0)}"></label>
         </div>
         <label class="fld"><span>备注</span><input data-id="${s.id}" data-field="row" data-key="note" data-slot="${k}" value="${esc(im.note || "")}" placeholder="道具、服化、参考片"></label>
@@ -1143,6 +1143,14 @@ function tableHTML() {
     <table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 /* 表头：拖动排序；自定义列可以改标题、可以删 */
+/* 转场：下拉里是常用值，最后一项「自定义…」可以输入自己的内容 */
+function transitionOptionsHTML(cur) {
+  const v = cur || "切";
+  const list = TRANS.slice();
+  if (v && list.indexOf(v) < 0 && v !== "__custom__") list.push(v);   // 之前输入过的自定义值也留在下拉里
+  return list.map((t) => `<option value="${esc(t)}"${t === v ? " selected" : ""}>${esc(t)}</option>`).join("")
+    + `<option value="__custom__">自定义…</option>`;
+}
 function colHeadHTML(col) {
   const inner = col.custom
     ? `<input class="colname" data-field="colname" data-col="${col.id}" value="${esc(col.label || "")}" title="改这一列的标题">
@@ -1159,7 +1167,7 @@ function colCellHTML(s, r, k, col) {
     return `<td data-col="${col.id}"><select ${attr}>${opts(list, r[col.key])}</select></td>`;
   }
   if (col.type === "num") return `<td data-col="${col.id}"><input type="number" min="0" step="0.5" style="width:92px" ${attr} value="${+(r.duration || 0)}"></td>`;
-  if (col.type === "trans") return `<td data-col="${col.id}"><input list="transList" ${attr} value="${esc(r.transition || "切")}" placeholder="可选可输入"></td>`;
+  if (col.type === "trans") return `<td data-col="${col.id}"><select ${attr}>${transitionOptionsHTML(r.transition)}</select></td>`;
   if (col.custom) return `<td data-col="${col.id}"><textarea data-id="${s.id}" data-field="col" data-col="${col.id}" data-slot="${k}" placeholder="${esc(col.label || "")}">${esc(cellValue(r, col))}</textarea></td>`;
   return `<td data-col="${col.id}"><textarea ${attr} placeholder="${rowLabel(k)}">${esc(r[col.key] || "")}</textarea></td>`;
 }
@@ -2300,6 +2308,16 @@ function bind() {
       const k = +(el.dataset.slot || 0);
       const key = el.dataset.key;
       while (rows.length <= k) rows.push(rows.length ? blankRow(rows[rows.length - 1]) : rowFromShot(s));
+      /* 转场选了「自定义…」→ 弹输入框，填完写回并重新渲染，让下拉里出现这个值 */
+      if (key === "transition" && el.value === "__custom__") {
+        const t = prompt("自定义转场，例如：闪白、闪黑、推入、无缝转场", "");
+        if (t != null && t.trim()) {
+          rows[k].transition = t.trim();
+          syncLegacyImage(s);
+        }
+        renderShots(); save();
+        return;
+      }
       if (key === "duration") rows[k].duration = Math.max(0, Math.round((parseFloat(el.value) || 0) * 10) / 10);
       else rows[k][key] = el.value;
       syncLegacyImage(s);
