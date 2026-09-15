@@ -1920,6 +1920,79 @@ const sigDistance = (a, b) => {
   for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]);
   return s / a.length;
 };
+/* ---------- 运镜 / 转场识别：对每个镜头再做一次运动估计 ---------- */
+const MO_W = 64, MO_H = 36;
+function grayOf(ctx, w, h, out) {
+  const d = ctx.getImageData(0, 0, w, h).data;
+  let lum = 0;
+  for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+    const g = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+    out[j] = g | 0; lum += g;
+  }
+  return lum / (w * h);
+}
+function sadAt(a, b, dx, dy, x0, y0, x1, y1) {
+  let s = 0, n = 0;
+  for (let y = y0; y < y1; y += 2) {
+    for (let x = x0; x < x1; x += 2) {
+      const bx = x + dx, by = y + dy;
+      if (bx < 0 || by < 0 || bx >= MO_W || by >= MO_H) continue;
+      s += Math.abs(a[y * MO_W + x] - b[by * MO_W + bx]); n++;
+    }
+  }
+  return n ? s / n : 999;
+}
+function bestShift(a, b, x0, y0, x1, y1, r) {
+  let best = null;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      const v = sadAt(a, b, dx, dy, x0, y0, x1, y1);
+      if (!best || v < best.v) best = { dx: dx, dy: dy, v: v };
+    }
+  }
+  return best || { dx: 0, dy: 0, v: 999 };
+}
+/* 单个镜头的运动 → 固定 / 摇(移) / 推 / 拉 / 手持 */
+function classifyMove(frames) {
+  if (frames.length < 2) return { move: "固定", motion: 0, zoom: 0 };
+  let mx = [], my = [], mag = 0, zoom = 0, n = 0;
+  const dirs = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+  for (let k = 1; k < frames.length; k++) {
+    const a = frames[k], b = frames[k - 1];
+    const whole = bestShift(a, b, 8, 4, MO_W - 8, MO_H - 4, 4);
+    const q = [bestShift(a, b, 2, 2, (MO_W >> 1), (MO_H >> 1), 3),
+               bestShift(a, b, (MO_W >> 1), 2, MO_W - 2, (MO_H >> 1), 3),
+               bestShift(a, b, 2, (MO_H >> 1), (MO_W >> 1), MO_H - 2, 3),
+               bestShift(a, b, (MO_W >> 1), (MO_H >> 1), MO_W - 2, MO_H - 2, 3)];
+    zoom += q.reduce((t, v, i) => t + (v.dx * dirs[i][0] + v.dy * dirs[i][1]), 0) / 4;
+    mx.push(whole.dx); my.push(whole.dy);
+    mag += Math.sqrt(whole.dx * whole.dx + whole.dy * whole.dy);
+    n++;
+  }
+  if (!n) return { move: "固定", motion: 0, zoom: 0 };
+  const meanX = mx.reduce((a, b) => a + b, 0) / n, meanY = my.reduce((a, b) => a + b, 0) / n;
+  const m = mag / n, z = zoom / n;
+  const same = mx.filter((v) => Math.abs(v) >= 1 && Math.sign(v) === Math.sign(meanX)).length / n;
+  let move = "固定";
+  if (m < 0.7) move = "固定";
+  else if (Math.abs(z) >= 1.1 && Math.abs(z) >= m * 0.5) move = z > 0 ? "推" : "拉";
+  else if (Math.abs(meanX) >= 1.0 && same > 0.6 && Math.abs(meanX) >= Math.abs(meanY)) move = "摇";
+  else if (Math.abs(meanY) >= 1.0 && Math.abs(meanY) > Math.abs(meanX)) move = "摇";
+  else if (m >= 2.4) move = "手持";
+  else move = "移";
+  return { move: move, motion: Math.round(m * 10) / 10, zoom: Math.round(z * 10) / 10 };
+}
+/* 切点性质 → 切 / 叠化 / 淡入淡出 */
+function classifyTransition(samples, cutIdx) {
+  const d = (i) => (i > 0 && i < samples.length) ? sigDistance(samples[i].sig, samples[i - 1].sig) : 0;
+  const peak = d(cutIdx);
+  const around = Math.max(d(cutIdx - 1), d(cutIdx + 1));
+  const lums = samples.slice(Math.max(0, cutIdx - 3), Math.min(samples.length, cutIdx + 4)).map((s) => s.lum || 0);
+  const lo = Math.min.apply(null, lums), hi = Math.max.apply(null, lums);
+  if (hi > 0 && lo < hi * 0.18) return "淡入淡出";
+  if (peak > 0 && around > peak * 0.35) return "叠化";
+  return "切";
+}
 const medianOf = (arr) => {
   if (!arr.length) return 0;
   const s = arr.slice().sort((a, b) => a - b), m = s.length >> 1;
@@ -2011,12 +2084,18 @@ async function collectSamples(opts, cb, cancelled) {
   const cv = document.createElement("canvas");
   cv.width = VID.AW; cv.height = VID.AH;
   const ctx = cv.getContext("2d", { willReadFrequently: true });
+  const gcv = document.createElement("canvas");
+  gcv.width = MO_W; gcv.height = MO_H;
+  const gctx = gcv.getContext("2d", { willReadFrequently: true });
   const duration = videoEl.duration;
   const samples = [];
   const grab = () => {
     if (!videoEl.videoWidth) return;
     ctx.drawImage(videoEl, 0, 0, cv.width, cv.height);
-    samples.push({ t: videoEl.currentTime, sig: frameSignature(ctx, cv.width, cv.height) });
+    gctx.drawImage(videoEl, 0, 0, gcv.width, gcv.height);
+    const gray = new Uint8Array(MO_W * MO_H);
+    const lum = grayOf(gctx, gcv.width, gcv.height, gray);
+    samples.push({ t: videoEl.currentTime, sig: frameSignature(ctx, cv.width, cv.height), gray: gray, lum: lum });
   };
   videoEl.muted = true;
   /* 方案一：逐个时间点定位取帧。时间点最准，切点不会偏。 */
@@ -2206,6 +2285,17 @@ async function runVideoScan() {
     const starts = await refineStarts(samples, idxs, scan.ctx, scan.cv, () => scanCancel);
     const segs = segmentsFromStarts(starts, dur, opts.minShot);
     if (!segs.length) throw new Error("没有识别出画面变化");
+    /* 每个镜头再做一次运动估计 + 判断切点性质（切 / 叠化 / 淡入淡出） */
+    setScanProgress(0.72, `正在分析每个镜头的运镜与转场…`);
+    segs.forEach((g, i) => {
+      const frames = samples.filter((s) => s.gray && s.t >= g.start - 0.01 && s.t <= g.end + 0.01).map((s) => s.gray);
+      const mv = classifyMove(frames);
+      g.move = mv.move; g.motion = mv.motion; g.zoom = mv.zoom;
+      const cutSample = idxs[i] != null ? samples[idxs[i]] : null;
+      const cutTime = cutSample ? cutSample.t : g.start;
+      const ci = samples.findIndex((s) => Math.abs(s.t - cutTime) < 1e-6);
+      g.transition = (i === 0 || ci < 1) ? "切" : classifyTransition(samples, ci);
+    });
     setScanProgress(0.72, `检测到 ${segs.length} 个镜头（切点阈值 ${thr.toFixed(1)}，常态帧差 ${med.toFixed(1)}），正在抓取画面…`);
     const thumbs = await captureThumbs(segs, (p, t) => {
       setScanProgress(0.72 + p * 0.27, `抓取镜头画面 ${Math.round(p * 100)}% · 已到 ${mmss(t)}`);
@@ -2214,7 +2304,10 @@ async function runVideoScan() {
     applyVideoShots(segs, thumbs);
     setScanProgress(1, `完成：${segs.length} 个镜头`);
     setTimeout(() => { if (!scanBusy) $("#vidDlg").close(); }, 600);
-    toast(`已从视频拆出 ${segs.length} 个镜头，总时长 ${fmtSec(totalDur())}。点镜头上的 ▶ 可边看边对。`
+    const moves = {}; segs.forEach((g) => { moves[g.move] = (moves[g.move] || 0) + 1; });
+    const rhythm = segs.length > 1 ? "平均镜头 " + (totalDur() / segs.length).toFixed(1) + "s" : "";
+    state.video = Object.assign({}, state.video || {}, { autoSummary: { shots: segs.length, moves: moves, rhythm: rhythm } });
+    toast(`已拆出 ${segs.length} 个镜头（${rhythm}，运镜：` + Object.entries(moves).map(([k, v]) => k + "×" + v).join("、") + "）。点 ▶ 可边看边对。"
       + (scan.mode === "loose" ? "（本机取帧不稳定，画面截图可能有偏差，可换「快速」采样再试）" : ""));
   } catch (e) {
     const msg = String((e && e.message) || e);
@@ -2233,7 +2326,10 @@ function applyVideoShots(segs, thumbs) {
   const shots = segs.map((g, i) => {
     const s = newShot({
       duration: Math.max(0.2, Math.round((g.end - g.start) * 100) / 100),
-      videoStart: Math.round(g.start * 100) / 100
+      videoStart: Math.round(g.start * 100) / 100,
+      move: g.move || "固定",
+      transition: g.transition || "切",
+      note: (g.motion ? "自动识别：运镜 " + g.move + "（运动量 " + g.motion + "）" : "")
     });
     const t = thumbs[i];
     if (t && t.url) {
