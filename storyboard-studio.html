@@ -149,7 +149,7 @@
   .rowtools{display:flex;gap:6px;align-items:center;justify-content:flex-end}
   .thumb-empty{display:flex;flex-direction:column;align-items:center;gap:4px;line-height:1.4}
   .thumb-empty small{font-size:11px;color:#98a2b3}
-  .grid-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;align-content:start}
+  .grid-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-content:start}
   .shot-f{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;padding:0 12px 12px}
   .fld{display:flex;flex-direction:column;gap:5px}
   .fld>span{font-size:12px;color:var(--muted)}
@@ -165,6 +165,22 @@
   td.n{width:52px;color:var(--muted);font-variant-numeric:tabular-nums;padding-top:12px}
   td input,td select,td textarea{padding:5px 7px;font-size:13px}
   td textarea{min-height:54px}
+  /* 表格：列宽按「列 id」定，拖动换列顺序也不受影响；景别/角度/运镜加宽，画面内容/台词加大 */
+  #tableWrap table{min-width:1860px}
+  #tableWrap th[data-col="size"],#tableWrap td[data-col="size"],
+  #tableWrap th[data-col="angle"],#tableWrap td[data-col="angle"],
+  #tableWrap th[data-col="move"],#tableWrap td[data-col="move"]{min-width:140px}
+  #tableWrap th[data-col="duration"],#tableWrap td[data-col="duration"]{min-width:104px}
+  #tableWrap th[data-col="picture"],#tableWrap td[data-col="picture"],
+  #tableWrap th[data-col="dialogue"],#tableWrap td[data-col="dialogue"]{min-width:440px}
+  #tableWrap td[data-col="picture"] textarea,#tableWrap td[data-col="dialogue"] textarea{min-height:320px}
+  #tableWrap td[data-col="sfx"] textarea{min-height:220px}
+  #tableWrap td[data-col="note"] input{min-width:190px}
+  #tableWrap th[data-col="scene"],#tableWrap td[data-col="scene"]{min-width:150px}
+  #tableWrap th[data-col="sfx"],#tableWrap td[data-col="sfx"],
+  #tableWrap th[data-col="note"],#tableWrap td[data-col="note"]{min-width:210px}
+  #tableWrap th[data-col="transition"],#tableWrap td[data-col="transition"]{min-width:132px}
+  #tableWrap th.custom,#tableWrap td[data-col^="c"]{min-width:170px}
   th:last-child,td:last-child{position:sticky;right:0;background:#fff;border-left:1px solid var(--line)}
   .tbl-acts{display:flex;gap:4px;flex-direction:column;white-space:nowrap}
   /* 表格列：表头可拖动排序；自定义列可改标题、可删 */
@@ -211,7 +227,7 @@
   /* 行内字段：画面内容 / 台词 / 音效 变高，和这一行的图片齐平 */
   .shot-row{align-items:stretch}
   .rowfields{height:100%}
-  .rowfields textarea.grow{flex:1 1 auto;min-height:76px;resize:vertical}
+  .rowfields textarea.grow{flex:1 1 auto;min-height:128px;resize:vertical}
   .extras{display:flex;flex-direction:column;gap:6px}
   .extra-row{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:6px;align-items:center}
   .extra-row input{padding:5px 7px}
@@ -1140,12 +1156,12 @@ function colCellHTML(s, r, k, col) {
   const attr = `data-id="${s.id}" data-field="row" data-key="${col.key}" data-slot="${k}"`;
   if (col.type === "select") {
     const list = col.list === "SIZES" ? SIZES : col.list === "ANGLES" ? ANGLES : MOVES;
-    return `<td><select ${attr}>${opts(list, r[col.key])}</select></td>`;
+    return `<td data-col="${col.id}"><select ${attr}>${opts(list, r[col.key])}</select></td>`;
   }
-  if (col.type === "num") return `<td><input type="number" min="0" step="0.5" style="width:78px" ${attr} value="${+(r.duration || 0)}"></td>`;
-  if (col.type === "trans") return `<td><input list="transList" ${attr} value="${esc(r.transition || "切")}" placeholder="可选可输入"></td>`;
-  if (col.custom) return `<td><textarea data-id="${s.id}" data-field="col" data-col="${col.id}" data-slot="${k}" placeholder="${esc(col.label || "")}">${esc(cellValue(r, col))}</textarea></td>`;
-  return `<td><textarea ${attr} placeholder="${rowLabel(k)}">${esc(r[col.key] || "")}</textarea></td>`;
+  if (col.type === "num") return `<td data-col="${col.id}"><input type="number" min="0" step="0.5" style="width:92px" ${attr} value="${+(r.duration || 0)}"></td>`;
+  if (col.type === "trans") return `<td data-col="${col.id}"><input list="transList" ${attr} value="${esc(r.transition || "切")}" placeholder="可选可输入"></td>`;
+  if (col.custom) return `<td data-col="${col.id}"><textarea data-id="${s.id}" data-field="col" data-col="${col.id}" data-slot="${k}" placeholder="${esc(col.label || "")}">${esc(cellValue(r, col))}</textarea></td>`;
+  return `<td data-col="${col.id}"><textarea ${attr} placeholder="${rowLabel(k)}">${esc(r[col.key] || "")}</textarea></td>`;
 }
 /* 画面列：缩略图 + 上传/清除 + 加行 */
 function imgCellHTML(s, i, r, k, last, count) {
