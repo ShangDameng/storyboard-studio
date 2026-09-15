@@ -1,0 +1,2204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="分镜台">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<title>分镜工坊 · Storyboard Studio</title>
+<style>
+  :root{
+    /* 浅色主题：白底黑字，淡灰衬托层次，蓝色作强调 */
+    --bg:#f4f6fa;          /* 页面底色 */
+    --panel:#ffffff;       /* 面板 / 卡片 */
+    --panel2:#f1f3f8;      /* 次级表面：按钮、标签底 */
+    --line:#e3e7ef;        /* 描边 */
+    --line-strong:#cbd3e1; /* 描边（悬停/强调） */
+    --txt:#151922;         /* 正文：近黑 */
+    --txt-soft:#3d4757;    /* 次级正文 */
+    --muted:#68727f;       /* 辅助文字 */
+    --accent:#2563eb;      /* 主色 */
+    --accent-d:#2563eb;    /* 选中底色 */
+    --accent-soft:#eef3ff; /* 主色淡底 */
+    --warn:#b45309; --danger:#d92d20; --ok:#0f9f6e;
+    --far:#5b8def; --mid:#37a06f; --close:#d9883c;
+    --radius:10px;
+    --shadow:0 1px 2px rgba(16,24,40,.05), 0 10px 26px rgba(16,24,40,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--txt);
+    font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",system-ui,-apple-system,"Segoe UI",sans-serif;
+    font-size:14px; display:flex; flex-direction:column; overflow:hidden;
+  }
+  button,input,select,textarea{font:inherit;color:inherit}
+  button{cursor:pointer;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--txt-soft)}
+  button:hover{border-color:var(--line-strong);background:#e8edf7;color:var(--txt)}
+  button:active{transform:translateY(1px)}
+  .primary{background:linear-gradient(180deg,#3b82f6,#2563eb);border-color:#2563eb;color:#fff;font-weight:600}
+  .primary:hover{background:linear-gradient(180deg,#4b8df7,#1d4ed8);border-color:#1d4ed8;color:#fff}
+  .ghost{background:transparent}
+  .mini{padding:2px 8px;border-radius:6px;line-height:1.5;color:var(--muted);background:#fff}
+  .mini:hover{color:var(--txt)}
+  .mini[data-act="del"]:hover,.mini2[data-act="del"]:hover{color:var(--danger);border-color:#f3c9c4;background:#fef5f4}
+  .mini[data-act="play"]:hover{color:var(--ok);border-color:#b9e3d1;background:#f2fbf7}
+  .mini2{padding:4px 8px;border-radius:6px;font-size:12px}
+  input,select,textarea{
+    background:#fff;border:1px solid var(--line);border-radius:7px;padding:6px 8px;width:100%;
+    outline:none;transition:border-color .15s;
+  }
+  input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+  textarea{resize:vertical;line-height:1.55}
+  select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#8c96a8 50%),linear-gradient(135deg,#8c96a8 50%,transparent 50%);
+    background-position:calc(100% - 14px) 12px,calc(100% - 9px) 12px;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:24px}
+
+  /* ---------- 顶栏 ---------- */
+  .topbar{
+    display:flex;align-items:center;gap:12px;padding:10px 16px;
+    background:#fff;border-bottom:1px solid var(--line);flex:0 0 auto;
+    box-shadow:0 1px 2px rgba(16,24,40,.04);
+  }
+  .logo{font-weight:700;letter-spacing:.5px;white-space:nowrap;color:var(--txt)}
+  .logo b{color:var(--accent)}
+  .logo b{color:var(--accent)}
+  #projName{max-width:280px;background:transparent;border-color:transparent;font-weight:600}
+  #projName:hover{border-color:var(--line)}
+  .topbar .sp{flex:1}
+  .save-state{font-size:12px;color:var(--muted);white-space:nowrap}
+
+  /* ---------- 布局 ---------- */
+  main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);gap:14px;padding:14px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);display:flex;flex-direction:column;min-height:0;box-shadow:var(--shadow)}
+  .panel-h{padding:10px 14px;border-bottom:1px solid var(--line);font-weight:600;display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  .panel-h small{font-weight:400;color:var(--muted)}
+  .panel-b{padding:14px;overflow:auto;flex:1;min-height:0}
+  .script-panel .panel-b{display:flex;flex-direction:column;gap:12px;overflow:auto}
+  .script-close{display:none}
+
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field>span{font-size:12px;color:var(--muted)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .hint{font-size:12px;color:var(--muted);line-height:1.6}
+  hr.sep{border:0;border-top:1px solid var(--line);margin:2px 0}
+  #script{min-height:200px;flex:1 1 auto;font-size:13px}
+
+  /* ---------- 工具条 ---------- */
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .seg-ctl{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg-ctl button{border:0;border-radius:0;background:transparent;padding:6px 12px;color:var(--muted)}
+  .seg-ctl button.on{background:var(--accent-d);color:#fff;font-weight:600}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .chip{background:#f8fafc;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--muted);white-space:nowrap}
+  .chip b{color:var(--txt);font-variant-numeric:tabular-nums}
+
+  /* ---------- 时间轴 ---------- */
+  .timeline{display:flex;gap:2px;padding:0 14px 10px;height:34px;flex:0 0 auto}
+  .timeline .seg{
+    border:0;border-radius:4px;padding:0;overflow:hidden;position:relative;min-width:6px;
+    display:flex;align-items:center;justify-content:center;font-size:11px;color:#132043;font-weight:600;opacity:.92;
+  }
+  .timeline .seg:hover{opacity:1;outline:2px solid #132043}
+  .timeline .seg.s-far{background:var(--far)}
+  .timeline .seg.s-mid{background:var(--mid)}
+  .timeline .seg.s-close{background:var(--close)}
+
+  /* ---------- 镜头卡片 ---------- */
+  .shots{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0}
+  .shot{flex:0 0 auto;background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .shot.flash{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+  .shot-h{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);background:#fafbfd}
+  .grip{cursor:grab;color:#b4bccb;padding:0 4px;user-select:none}
+  .grip:active{cursor:grabbing}
+  .badge-no{background:var(--accent-soft);border-radius:6px;padding:3px 9px;font-size:12px;color:#2f5bd0;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .shot-h .scene{background:transparent;border-color:transparent;font-size:13px;padding:4px 6px}
+  .shot-h .scene:hover{border-color:var(--line-strong);background:#fff}
+  .tc{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .shot-h .acts{margin-left:auto;display:flex;gap:4px}
+  .shot-b{display:flex;flex-direction:column;gap:12px;padding:12px;min-width:0}
+  .shot-rows{display:flex;flex-direction:column;gap:12px;min-width:0}
+  .shot-row{display:grid;grid-template-columns:230px minmax(0,1fr);gap:12px;align-items:start;min-width:0}
+  .rowfields{display:flex;flex-direction:column;gap:10px;min-width:0}
+  .shot-tools{max-width:230px}
+  .shot-main{display:flex;flex-direction:column;gap:10px;min-width:0}
+  .thumb{
+    aspect-ratio:16/9;max-height:330px;width:100%;padding:0;overflow:hidden;border-radius:8px;border:1px dashed #ccd5e4;
+    background:#f7f9fc;display:flex;align-items:center;justify-content:center;color:var(--muted);
+  }
+  .thumb:focus{border-color:var(--accent);border-style:solid;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+  .thumb img{width:100%;height:100%;object-fit:contain;display:block;background:#eef1f6}
+
+  /* ---------- 一个镜号多行画面（最多 3 行） ---------- */
+  .imgstack{display:flex;flex-direction:column;gap:8px;min-width:0}
+  .imgstack .thumb{max-height:none;border-style:solid;border-color:var(--line)}
+  .imgstack .thumb:hover{border-color:var(--accent)}
+  .thumbwrap{position:relative;display:block}
+  .slotlabel{position:absolute;left:6px;top:6px;z-index:2;background:rgba(255,255,255,.92);color:#2f5bd0;
+    border-radius:5px;padding:1px 6px;font-size:11px;font-weight:600;pointer-events:none;box-shadow:0 1px 2px rgba(16,24,40,.08)}
+  .addrow{width:100%;border:1px dashed var(--line-strong);background:#fff;color:var(--accent);
+    border-radius:8px;padding:7px;font-size:12px;font-weight:600}
+  .addrow:hover{border-color:var(--accent);background:var(--accent-soft)}
+  .rowtools{display:flex;gap:6px;align-items:center;justify-content:flex-end}
+  .thumb-empty{display:flex;flex-direction:column;align-items:center;gap:4px;line-height:1.4}
+  .thumb-empty small{font-size:11px;color:#98a2b3}
+  .grid-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;align-content:start}
+  .shot-f{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;padding:0 12px 12px}
+  .fld{display:flex;flex-direction:column;gap:5px}
+  .fld>span{font-size:12px;color:var(--muted)}
+
+  /* ---------- 表格视图 ---------- */
+  .tablewrap{flex:1;overflow:auto;min-height:0}
+  table{border-collapse:collapse;width:100%;min-width:1330px}
+  th,td{border-bottom:1px solid var(--line);padding:6px;vertical-align:top;text-align:left}
+  tr.tr-first td{border-top:2px solid var(--line-strong)}
+  td.imgcell{width:132px}
+  .thumb-tbl{width:120px;max-width:120px;max-height:190px;margin:0}
+  th{position:sticky;top:0;background:#f8fafc;font-size:12px;color:var(--muted);font-weight:600;z-index:2}
+  td.n{width:52px;color:var(--muted);font-variant-numeric:tabular-nums;padding-top:12px}
+  td input,td select,td textarea{padding:5px 7px;font-size:13px}
+  td textarea{min-height:54px}
+  th:last-child,td:last-child{position:sticky;right:0;background:#fff;border-left:1px solid var(--line)}
+  .tbl-acts{display:flex;gap:4px;flex-direction:column;white-space:nowrap}
+
+  /* 表格里的画面单元格 */
+  .cellimg{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+  .cellimg .row{gap:6px}
+  /* 画面墙：由 JS 按图片比例算出「每行等高、左右齐平」的排布 */
+  .shots.grid{flex-direction:row;flex-wrap:wrap;gap:12px;align-items:flex-start;align-content:flex-start}
+  .gcell{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(16,24,40,.04);flex:0 0 auto}
+  .gcell{position:relative}
+  .gcell .gbtn{padding:0;border:0;border-radius:0;background:#eef1f6;display:block;width:100%;cursor:zoom-in;min-height:0}
+  .gcell .gimg{display:flex;flex-direction:column;aspect-ratio:16/9;width:100%;overflow:hidden}
+  .gcell .gimg img{width:100%;height:auto;object-fit:contain;display:block;border-bottom:1px solid rgba(255,255,255,.8)}
+  .gcell .gimg img:last-child{border-bottom:0}
+  .gcount{position:absolute;right:8px;top:8px;z-index:3;background:rgba(255,255,255,.92);color:#2f5bd0;
+    border-radius:99px;padding:1px 8px;font-size:11px;font-weight:600;box-shadow:0 1px 2px rgba(16,24,40,.1)}
+  .gempty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px}
+  .gcap{display:flex;align-items:center;gap:8px;padding:8px 10px 0;min-width:0;overflow:hidden}
+  .gcap b{font-size:12px;color:#2f5bd0;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto}
+  .gcap .hint{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .gcap .gplay{margin-left:auto;flex:0 0 auto}
+  .gtext{padding:4px 10px 10px;font-size:12px;color:var(--muted);height:34px;overflow:hidden;line-height:1.5;word-break:break-word}
+
+  /* 看大图 */
+  #imgDlg{border:0;background:transparent;padding:0;max-width:min(1120px,94vw)}
+  #imgDlg::backdrop{background:rgba(15,23,42,.5)}
+  .lb{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(16,24,40,.22)}
+  .lb-top{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+  .lb-img{background:#eef1f6;display:flex;align-items:center;justify-content:center;min-height:220px;max-height:72vh;overflow:auto}
+  .lb-img img{max-width:100%;max-height:72vh;display:block;object-fit:contain}
+  .lb-empty{color:var(--muted);text-align:center;padding:64px 40px;line-height:1.9}
+  .lb-bot{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
+  .thumb-sm{width:152px;max-width:152px;max-height:300px;margin:0;cursor:zoom-in}
+  .thumb{cursor:zoom-in}
+  .thumb-sm .thumb-empty{font-size:11px;gap:0;line-height:1.5}
+  .thumb-sm .thumb-empty small{display:none}
+
+  /* ---------- 源视频 ---------- */
+  .vbar{display:none;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line);background:#f8fafc;align-items:flex-start;flex-wrap:wrap;flex:0 0 auto}
+  .vbar.on{display:flex}
+  .vbar video{width:270px;max-width:100%;border-radius:8px;background:#111827;display:block}
+  .vbar.off video{display:none}
+  .vbar .vmeta{display:flex;flex-direction:column;gap:6px;min-width:150px;flex:1}
+  .vbar .vname{font-size:13px;font-weight:600;word-break:break-all}
+  .bar{height:8px;background:#eef1f6;border:1px solid var(--line);border-radius:99px;overflow:hidden;margin-bottom:8px}
+  .bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .18s}
+  .shot.playing{border-color:var(--ok);box-shadow:0 0 0 3px rgba(15,159,110,.16)}
+
+  /* ---------- 对话 / toast ---------- */
+  dialog{border:1px solid var(--line);background:var(--panel);color:var(--txt);border-radius:12px;max-width:720px;width:92vw;padding:0}
+  dialog::backdrop{background:rgba(15,23,42,.42)}
+  .dlg-h{padding:14px 16px;border-bottom:1px solid var(--line);font-weight:600}
+  .dlg-b{padding:16px;display:flex;flex-direction:column;gap:10px}
+  .dlg-f{padding:12px 16px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+  #aiOut{min-height:160px;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+
+  #toast{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#fff;border:1px solid var(--line);
+    border-radius:10px;padding:10px 14px;display:none;gap:10px;align-items:center;z-index:99;box-shadow:0 10px 30px rgba(16,24,40,.16);
+    max-width:min(90vw,620px);
+  }
+  #toast.show{display:flex}
+  #toast.warn{border-color:var(--warn)}
+  #toast button{padding:4px 10px;font-size:12px}
+  .empty{color:var(--muted);text-align:center;padding:40px 20px;line-height:2}
+  .empty b{color:var(--txt)}
+
+  /* ---------- 打印 ---------- */
+  #printRoot{display:none}
+  @media print{
+    @page{size:A4 portrait;margin:12mm}
+    body{background:#fff;color:#000;overflow:visible;display:block}
+    .topbar,main,#toast,dialog{display:none !important}
+    #printRoot{display:block}
+    #printRoot h1{font-size:18px;margin:0 0 4px}
+    #printRoot .meta{font-size:11px;color:#444;margin-bottom:10px}
+    #printRoot table{width:100%;border-collapse:collapse;min-width:0}
+    #printRoot th,#printRoot td{border:1px solid #999;padding:5px;font-size:11px;color:#000;vertical-align:top}
+    #printRoot th{background:#eee}
+    #printRoot th{white-space:nowrap}
+    #printRoot td.p-no{width:34px;text-align:center;font-weight:700}
+    #printRoot td.p-img{width:auto}
+    #printRoot td.p-img .p-imgs{display:flex;gap:4px;flex-wrap:wrap}
+    #printRoot td.p-img img{max-width:112px;max-height:150px;width:auto;height:auto;display:block}
+    #printRoot .p-size{font-weight:700;margin-bottom:2px}
+    #printRoot .p-dlg{color:#333;margin-top:3px}
+    #printRoot .p-sfx{color:#555;font-size:10px}
+    #printRoot tr{break-inside:avoid}
+  }
+  @media (max-width:940px){
+    main{grid-template-columns:1fr;overflow:auto}
+    .script-panel{max-height:46vh}
+    .shot-b{grid-template-columns:1fr}
+    .thumb{max-width:260px}
+  }
+
+  /* ================= 宽屏：剧本改成抽屉，平时把地方全留给分镜 ================= */
+  @media (min-width:1081px){
+    #panelScript{
+      position:fixed;left:0;top:0;bottom:0;width:390px;max-width:92vw;z-index:70;
+      border-radius:0;border-top:0;border-bottom:0;height:100%;
+      transform:translateX(-103%);transition:transform .22s ease;
+      box-shadow:14px 0 44px rgba(16,24,40,.16);
+    }
+    body.script-open #panelScript{transform:none}
+    .script-close{display:inline-flex;align-items:center;min-height:30px}
+    .scrim.show{display:block;position:fixed;inset:0;background:rgba(15,23,42,.38);z-index:65}
+  }
+
+  /* ================= 手机 / 平板适配 ================= */
+  html{-webkit-text-size-adjust:100%}
+  .sheet-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .sheet-h{display:none}
+  .more-btn,.tabbar,.scrim{display:none}
+
+  @media (max-width:1080px){
+    body{height:100vh;height:100dvh}
+    body{overflow-x:hidden}
+    /* 关键：打断 flex/grid 的 min-content 撑宽链，否则手机端会横向溢出 */
+    main,.panel,.panel-b,.toolbar,.timeline,.shots,.tablewrap,.shot,.shot-h,.shot-b,.shot-main,.shot-f,.grid-fields,.chips,.topbar{min-width:0}
+    .topbar{padding:8px 12px;gap:8px;flex-wrap:nowrap}
+    #projName{max-width:34vw;min-width:90px}
+    .save-state{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:22vw}
+    .more-btn{display:inline-flex;align-items:center;min-height:38px;white-space:nowrap;flex:0 0 auto}
+
+    /* 底部弹出菜单 */
+    .sheet-actions{
+      position:fixed;left:0;right:0;bottom:0;z-index:60;display:none;
+      grid-template-columns:1fr 1fr;gap:10px;align-items:stretch;
+      padding:14px 14px calc(18px + env(safe-area-inset-bottom));
+      background:#fff;border-top:1px solid var(--line);border-radius:16px 16px 0 0;
+      box-shadow:0 -14px 44px rgba(16,24,40,.18);max-height:78vh;overflow:auto;
+    }
+    .sheet-actions.open{display:grid}
+    .sheet-h{display:flex;grid-column:1 / -1;justify-content:space-between;align-items:center;color:var(--muted);font-size:13px;padding:0 2px 2px}
+    .sheet-h button{min-height:34px}
+    .sheet-actions button{min-height:48px;font-size:15px}
+    .sheet-actions #btnPrint{grid-column:1 / -1}
+    .scrim.show{display:block;position:fixed;inset:0;background:rgba(15,23,42,.38);z-index:55}
+
+    /* 底部标签栏 */
+    .tabbar{
+      display:flex;position:fixed;left:0;right:0;bottom:0;z-index:50;gap:8px;justify-content:center;
+      background:rgba(255,255,255,.97);border-top:1px solid var(--line);
+      padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+    }
+    .tabbar button{flex:1;max-width:260px;min-height:48px;border:0;background:transparent;color:var(--muted);border-radius:10px;font-size:15px}
+    .tabbar button.on{background:var(--accent-d);color:#fff;font-weight:600}
+    #btnScript{display:none}   /* 手机上用底部「剧本」标签，不需要重复按钮 */
+
+    /* 单栏视图切换 */
+    main{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr);padding:10px;overflow:hidden}
+    .panel{display:none;min-height:0;height:100%}
+    body[data-tab="script"] #panelScript{display:flex}
+    body[data-tab="shots"] #panelShots{display:flex}
+    .script-panel{max-height:none}
+    .panel-b{padding:12px}
+    .panel-h{position:sticky;top:0;z-index:3;background:var(--panel)}
+    .toolbar{position:sticky;top:0;z-index:3;background:var(--panel);padding:8px 10px}
+    .timeline{padding:0 10px 8px;height:auto;min-height:38px;overflow-x:auto;overflow-y:hidden}
+    .timeline .seg{min-width:28px}
+    .shots{padding:10px;gap:10px}
+    .shot-h{padding:6px 8px;gap:6px}
+    .shot-h .scene{font-size:12px;flex:1 1 90px}
+    .tc{font-size:11px}
+    .shot-row{grid-template-columns:170px minmax(0,1fr);gap:10px}
+    .shot-tools{max-width:170px}
+    .shot-b{gap:10px;padding:10px}
+    .shot-f{padding:0 10px 10px;gap:8px}
+    .vbar{padding:10px}
+    .vbar video{width:100%;max-height:190px}
+    /* 16px 以上可避免 iOS 聚焦输入框时自动放大页面 */
+    input,select,textarea{font-size:16px}
+    dialog{width:96vw;max-height:88vh}
+    #toast{left:12px;right:12px;transform:none;bottom:calc(86px + env(safe-area-inset-bottom))}
+  }
+
+  @media (max-width:620px){
+    .logo{display:none}
+    #projName{max-width:46vw}
+    .save-state{display:none}
+    .chips{width:100%;margin-left:0;justify-content:flex-start}
+    .shot-h{flex-wrap:wrap}
+    .shot-h .acts{margin-left:auto}
+    .shot-row{grid-template-columns:1fr}
+    .shot-tools{max-width:none}
+    .thumb{max-width:none;max-height:180px}
+    .vbar{flex-direction:column}
+    .grid-fields{grid-template-columns:1fr 1fr}
+    .shot-f{grid-template-columns:1fr}
+    #script{min-height:170px}
+    .panel-b{padding:12px}
+  }
+
+  /* 触屏优化：加大点击区域，避免 iOS 自动放大 */
+  @media (pointer:coarse){
+    button{min-height:40px}
+    .mini{min-width:40px;min-height:40px;font-size:16px;padding:2px 10px}
+    .mini2{min-height:42px;padding:6px 14px}
+    .thumb{cursor:pointer}
+    .grip{display:none}
+    .thumb-empty small:last-child{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo">分镜<b>工坊</b></div>
+  <input id="projName" value="未命名分镜" aria-label="项目名称">
+  <div class="sp"></div>
+  <span class="save-state" id="saveState">就绪</span>
+  <div class="sheet-actions" id="moreSheet" role="group" aria-label="项目操作">
+    <div class="sheet-h"><span>项目操作</span><button type="button" id="btnSheetClose" class="mini2">关闭</button></div>
+    <button id="btnNew" title="清空当前项目">新建</button>
+    <button id="btnSaveJson">导出项目</button>
+    <button id="btnImportJson">载入项目</button>
+    <button id="btnExportCsv">导出 CSV</button>
+    <button id="btnExportMd">导出 Markdown</button>
+    <button id="btnImages">批量导入画面</button>
+    <button id="btnPrompt">AI 提示词</button>
+    <button id="btnImportAI">导入 AI 结果</button>
+    <button class="primary" id="btnPrint">打印 / 导出 PDF</button>
+  </div>
+  <button id="btnMore" class="more-btn" aria-expanded="false" aria-controls="moreSheet">更多 ⋯</button>
+</header>
+
+<main>
+  <!-- ========== 左：剧本与拆分 ========== -->
+  <aside class="panel script-panel" id="panelScript">
+    <div class="panel-h">剧本 / 文案 <small>粘贴后点「智能拆分」</small>
+      <span style="flex:1"></span>
+      <button type="button" class="mini2 script-close" id="btnScriptClose">收起 ›</button>
+    </div>
+    <div class="panel-b">
+      <div class="field">
+        <textarea id="script" placeholder="示例：
+1. 咖啡馆 - 日 内
+小林推门走进咖啡馆，环顾四周。
+小林：请问，这里有人吗？
+她坐下，把信封推到桌子中间。特写：信封上的名字。"></textarea>
+      </div>
+      <div class="row">
+        <button class="primary" id="btnSplit" style="flex:1">智能拆分分镜</button>
+        <button id="btnDemo">示例</button>
+        <button id="btnClear">清空</button>
+      </div>
+      <hr class="sep">
+      <div class="two">
+        <label class="field"><span>每镜头目标字数</span><input id="setChars" type="number" min="6" max="120" step="2" value="24"></label>
+        <label class="field"><span>语速（字/秒）</span><input id="setWps" type="number" min="1" max="12" step="0.5" value="4.5"></label>
+        <label class="field"><span>最短镜头（秒）</span><input id="setMin" type="number" min="0.5" max="10" step="0.5" value="1.5"></label>
+        <label class="field"><span>新增镜头默认时长</span><input id="setDef" type="number" min="0.5" max="30" step="0.5" value="3"></label>
+      </div>
+      <p class="hint">时长按台词字数 ÷ 语速估算，并自动四舍五入到 0.5 秒；拆分后仍可手动微调。</p>
+      <hr class="sep">
+      <p class="hint">导出 CSV / Markdown、项目备份、打印分镜表、AI 辅助拆分，都在右上角「更多 ⋯」里（手机和平板上从底部弹出）。</p>
+    </div>
+  </aside>
+
+  <!-- ========== 右：分镜 ========== -->
+  <section class="panel" id="panelShots">
+    <div class="toolbar">
+      <div class="seg-ctl" id="viewCtl">
+        <button data-view="card" class="on">卡片</button>
+        <button data-view="grid">画面</button>
+        <button data-view="table">表格</button>
+      </div>
+      <button id="btnAdd">＋ 新增镜头</button>
+      <button id="btnVideo">视频拆解</button>
+      <button id="btnScript">剧本 / 智能拆分</button>
+      <div class="chips">
+        <span class="chip">镜头 <b id="stShots">0</b></span>
+        <span class="chip">总时长 <b id="stDur">0s</b></span>
+        <span class="chip">平均 <b id="stAvg">0s</b></span>
+        <span class="chip">台词 <b id="stWords">0</b> 字</span>
+      </div>
+    </div>
+    <div class="vbar" id="vbar">
+      <video id="srcVideo" playsinline muted controls preload="metadata"></video>
+      <div class="vmeta">
+        <span class="vname" id="vname">源视频</span>
+        <span class="hint" id="vmeta">导入视频后，点镜头上的 ▶ 可直接跳到对应画面</span>
+        <div class="row"><button class="mini2" id="btnDropVideo">移除视频</button></div>
+      </div>
+    </div>
+    <div class="timeline" id="timeline" aria-label="镜头时间轴"></div>
+    <div class="shots" id="shots"></div>
+    <div class="tablewrap" id="tableWrap" style="display:none"></div>
+  </section>
+</main>
+
+<nav class="tabbar" id="tabbar" aria-label="主视图切换">
+  <button type="button" data-tab="script">剧本</button>
+  <button type="button" data-tab="shots" class="on">分镜</button>
+</nav>
+<div class="scrim" id="scrim"></div>
+
+<dialog id="aiDlg">
+  <div class="dlg-h">AI 辅助拆分</div>
+  <div class="dlg-b" id="aiBody"></div>
+  <div class="dlg-f" id="aiFoot"></div>
+</dialog>
+
+<input type="file" id="filePick" accept=".json,application/json" hidden>
+<input type="file" id="imgPick" accept="image/*" hidden>
+<input type="file" id="imgPickMany" accept="image/*" multiple hidden>
+<input type="file" id="videoPick" accept="video/*" hidden>
+
+<dialog id="imgDlg">
+  <div class="lb">
+    <div class="lb-top">
+      <b id="lbTitle">画面</b>
+      <span style="flex:1"></span>
+      <span class="hint" id="lbPos"></span>
+    </div>
+    <div class="lb-img" id="lbImg" title="把图片拖到这里也可以"></div>
+    <div class="lb-bot">
+      <button id="lbPrev">◀ 上一个</button>
+      <button id="lbNext">下一个 ▶</button>
+      <button id="lbPrevRow">▲ 上一行</button>
+      <button id="lbNextRow">▼ 下一行</button>
+      <span style="flex:1"></span>
+      <button id="lbUpload">上传图片</button>
+      <button id="lbClear">清除</button>
+      <button class="primary" id="lbClose">关闭</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="vidDlg">
+  <div class="dlg-h">从视频自动拆解分镜</div>
+  <div class="dlg-b">
+    <div class="row">
+      <button class="primary" id="btnPickVideo" style="flex:1">选择视频文件</button>
+      <span class="hint" id="vidFileInfo">未选择</span>
+    </div>
+    <div class="two">
+      <label class="field"><span>采样间隔</span><select id="scanInterval">
+        <option value="0.8">快速 · 0.8 秒</option>
+        <option value="0.4" selected>标准 · 0.4 秒</option>
+        <option value="0.2">精细 · 0.2 秒</option>
+      </select></label>
+      <label class="field"><span>灵敏度</span><select id="scanSens">
+        <option value="3">少切 · 只在明显换场处</option>
+        <option value="2.2" selected>标准</option>
+        <option value="1.4">多切 · 捕捉细微变化</option>
+      </select></label>
+      <label class="field"><span>最短镜头（秒）</span><input id="scanMin" type="number" min="0.3" step="0.1" value="1"></label>
+      <label class="field"><span>拆解方式</span><select id="scanMode">
+        <option value="replace">替换当前分镜</option>
+        <option value="append">追加到末尾</option>
+      </select></label>
+    </div>
+    <div id="scanProg" style="display:none">
+      <div class="bar"><i id="scanBar"></i></div>
+      <p class="hint" id="scanMsg">准备中…</p>
+    </div>
+    <p class="hint">分析全部在你自己的浏览器里完成，视频不会上传。拆解后每个镜头会自动带上该时间点的画面截图；点镜头上的 ▶ 可让播放器跳到对应位置。视频较长时请用「快速」采样。</p>
+  </div>
+  <div class="dlg-f">
+    <button class="primary" id="btnScanStart" disabled>开始拆解</button>
+    <button id="btnScanClose">关闭</button>
+  </div>
+</dialog>
+<div id="toast"><span id="toastMsg"></span><button id="toastAct" style="display:none"></button></div>
+<div id="printRoot"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   分镜工坊 · 单文件本地分镜工具
+   数据模型 → 渲染 → 交互 → 导出，全部离线运行
+   ============================================================ */
+
+const SIZES = ["大远景","远景","全景","中景","中近景","近景","特写","大特写"];
+const ANGLES = ["平视","俯视","仰视","侧拍","过肩","主观视角","鸟瞰"];
+const MOVES = ["固定","推","拉","摇","移","跟","升降","环绕","手持","变焦"];
+const TRANS = ["切","叠化","淡入","淡出","划像","跳切","匹配剪辑"];
+const LS_KEY = "sb_studio_v1";
+
+const FAR = new Set(["大远景","远景","全景"]);
+const CLOSE = new Set(["近景","特写","大特写"]);
+
+const $ = (s) => document.querySelector(s);
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const esc = (s) => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const nl2br = (s) => esc(s).replace(/\n/g, "<br>");
+const half = (v) => Math.round(v * 2) / 2;
+const fmtSec = (s) => (Math.round(s * 10) / 10).toString().replace(/\.0$/, "") + "s";
+const mmss = (s) => {
+  s = Math.max(0, Math.round(s));
+  return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+};
+
+let state = freshState();
+let tab = "shots";
+let activeThumbId = null;
+let activeThumbSlot = 0;
+let pendingImgId = null;
+let pendingImgSlot = 0;
+let dragId = null;
+let lastDeleted = null;
+let saveTimer = null;
+let toastTimer = null;
+
+function freshState() {
+  return {
+    v: 1, name: "未命名分镜", script: "", shots: [],
+    settings: { charsPerShot: 24, wps: 4.5, minDur: 1.5, defaultDur: 3 },
+    view: "card"
+  };
+}
+function newShot(p = {}) {
+  return Object.assign({
+    id: uid(), scene: "", size: "中景", angle: "平视", move: "固定", transition: "切",
+    duration: state.settings.defaultDur, picture: "", dialogue: "", sfx: "", note: "", image: "", videoStart: null
+    , imgW: null, imgH: null, images: []
+  }, p);
+}
+const shotById = (id) => state.shots.find((s) => s.id === id);
+const shotIndex = (id) => state.shots.findIndex((s) => s.id === id);
+const startAt = (i) => state.shots.slice(0, i).reduce((a, s) => a + (+s.duration || 0), 0);
+const totalDur = () => state.shots.reduce((a, s) => a + (+s.duration || 0), 0);
+const sizeClass = (sz) => FAR.has(sz) ? "s-far" : CLOSE.has(sz) ? "s-close" : "s-mid";
+/* ---------- 一个镜号内的多行画面 ---------- */
+const MAX_ROWS = 3;
+const ROW_LABELS = ["起幅", "中段", "落幅"];
+const rowLabel = (k) => ROW_LABELS[k] || "画面" + (k + 1);
+/* 镜头里的画面行数组（老数据只有单张图，这里自动升级成一行） */
+function shotImages(s) {
+  if (!Array.isArray(s.images)) s.images = [];
+  /* 老数据（或剧本/AI 刚生成、只有镜头级文字）自动升级成第一行 */
+  if (!s.images.length && (s.image || s.picture || s.dialogue || s.sfx || s.note || +s.duration > 0)) {
+    s.images.push(rowFromShot(s));
+  }
+  return s.images;
+}
+const rowHasImg = (r) => !!(r && r.url);
+/* 镜头级字段 = 第一行的快照（导出、画面墙、时间轴继续读这些字段） */
+function rowFromShot(s) {
+  return {
+    url: s.image || "", w: s.imgW || null, h: s.imgH || null,
+    picture: s.picture || "", dialogue: s.dialogue || "",
+    size: s.size || "中景", angle: s.angle || "平视", move: s.move || "固定",
+    transition: s.transition || "切", duration: +s.duration || 0,
+    sfx: s.sfx || "", note: s.note || ""
+  };
+}
+/* 新加的一行：景别/机位等沿用上一行（同一镜号通常一致），文字和时长留空 */
+function blankRow(prev) {
+  return {
+    url: "", w: null, h: null, picture: "", dialogue: "",
+    size: prev ? prev.size : "中景", angle: prev ? prev.angle : "平视",
+    move: prev ? prev.move : "固定", transition: prev ? prev.transition : "切",
+    duration: 0, sfx: "", note: ""
+  };
+}
+/* 把各行的值回填到镜头级字段；镜号时长 = 各行时长之和 */
+function syncLegacyImage(s) {
+  const rows = shotImages(s);
+  if (!rows.length) return;
+  const first = rows.find(rowHasImg) || null;
+  s.image = first ? first.url : "";
+  s.imgW = first ? first.w : null;
+  s.imgH = first ? first.h : null;
+  s.picture = rows[0].picture || "";
+  s.dialogue = rows[0].dialogue || "";
+  s.size = rows[0].size || "中景";
+  s.angle = rows[0].angle || "平视";
+  s.move = rows[0].move || "固定";
+  s.transition = rows[0].transition || "切";
+  s.sfx = rows[0].sfx || "";
+  s.note = rows[0].note || "";
+  s.duration = rows.reduce((a, r) => a + (+(r && r.duration) || 0), 0);
+}
+/* 多行字段合成一条，导出 / 打印用：起幅：… ／ 中段：… */
+function shotField(s, key) {
+  const rows = shotImages(s);
+  const vals = rows.map((r) => (r && r[key] != null && String(r[key]).trim() !== "" ? String(r[key]).trim() : ""));
+  if (rows.length <= 1) return vals[0] || "";
+  return vals.map((v, k) => (v ? rowLabel(k) + "：" + v : "")).filter(Boolean).join("  ／  ");
+}
+const shotText = (s, key) => shotField(s, key);
+/* 数据体检：把历史版本留下的异常结构修好（比如把空行存成 null、行里缺字段、选项值非法）。
+   旧版本曾经用 null 表示"还没放图的空行"，新代码按对象读，必须先规范化。 */
+function normalizeShots() {
+  if (!Array.isArray(state.shots)) { state.shots = []; return; }
+  state.shots.forEach((s) => {
+    if (!s || typeof s !== "object") return;
+    if (!Array.isArray(s.images)) s.images = [];
+    const src = s.images;
+    s.images = src.map((r, k) => {
+      const prev = src[k - 1];
+      const base = k === 0 ? rowFromShot(s) : blankRow(prev && typeof prev === "object" ? prev : null);
+      if (!r || typeof r !== "object") return base;      // null / 非法项 → 变成空行
+      const merged = Object.assign({}, base);
+      for (const key of Object.keys(r)) {
+        const v = r[key];
+        if (v === undefined || v === null) continue;
+        merged[key] = v;
+      }
+      if (!SIZES.includes(merged.size)) merged.size = base.size;
+      if (!ANGLES.includes(merged.angle)) merged.angle = base.angle;
+      if (!MOVES.includes(merged.move)) merged.move = base.move;
+      if (!TRANS.includes(merged.transition)) merged.transition = base.transition;
+      merged.duration = Math.max(0, +merged.duration || 0);
+      merged.url = merged.url || "";
+      merged.picture = merged.picture || "";
+      merged.dialogue = merged.dialogue || "";
+      return merged;
+    });
+    if (s.images.length) syncLegacyImage(s);
+  });
+}
+function imgAspect(im) {
+  const w = +(im && im.w) || 0, h = +(im && im.h) || 0;
+  if (w > 0 && h > 0) return Math.max(0.42, Math.min(3.2, w / h));
+  return 16 / 9;
+}
+/* 每张图记住自己的宽高比：横版给宽框、竖版给高框，画面完整不被裁 */
+function shotAspect(s) {
+  const im = shotImages(s)[0];
+  return im ? imgAspect(im) : 16 / 9;
+}
+/* 竖着叠起来之后整块画面的宽高比 */
+function stackAspect(s) {
+  const ims = shotImages(s).filter(rowHasImg);
+  if (!ims.length) return 16 / 9;
+  const inv = ims.reduce((a, im) => a + 1 / imgAspect(im), 0);
+  return Math.max(0.22, 1 / inv);
+}
+/* ---------- 多行画面的 HTML ---------- */
+function imgStackHTML(s, i) {
+  const ims = shotImages(s);
+  const slots = ims.length ? ims : [rowFromShot(s)];
+  return `<div class="shot-rows">${slots.map((im, k) => `<div class="shot-row">
+      <span class="thumbwrap">
+      <span class="slotlabel">${rowLabel(k)}</span>
+      <button type="button" class="thumb" data-id="${s.id}" data-slot="${k}" data-act="lb"
+        style="aspect-ratio:${imgAspect(im).toFixed(4)}" title="点开看大图；也可 Ctrl+V 粘贴 / 拖入图片">
+        ${rowHasImg(im) ? `<img src="${im.url}" alt="镜头 ${i + 1} ${rowLabel(k)}">`
+          : `<span class="thumb-empty"><span>＋ 画面</span><small>点击后 Ctrl+V</small><small>或拖入图片</small></span>`}
+      </button>
+      </span>
+      <div class="rowfields">
+        <label class="fld"><span>${rowLabel(k)} · 画面内容</span>
+          <textarea rows="2" data-id="${s.id}" data-field="row" data-key="picture" data-slot="${k}" placeholder="这一行画面里看到什么">${esc(im.picture || "")}</textarea>
+        </label>
+        <label class="fld"><span>${rowLabel(k)} · 台词 / 旁白</span>
+          <textarea rows="2" data-id="${s.id}" data-field="row" data-key="dialogue" data-slot="${k}" placeholder="这一行对应的台词，没有就留空">${esc(im.dialogue || "")}</textarea>
+        </label>
+        <div class="grid-fields">
+          <label class="fld"><span>景别</span><select data-id="${s.id}" data-field="row" data-key="size" data-slot="${k}">${opts(SIZES, im.size)}</select></label>
+          <label class="fld"><span>机位角度</span><select data-id="${s.id}" data-field="row" data-key="angle" data-slot="${k}">${opts(ANGLES, im.angle)}</select></label>
+          <label class="fld"><span>运镜</span><select data-id="${s.id}" data-field="row" data-key="move" data-slot="${k}">${opts(MOVES, im.move)}</select></label>
+          <label class="fld"><span>转场</span><select data-id="${s.id}" data-field="row" data-key="transition" data-slot="${k}">${opts(TRANS, im.transition)}</select></label>
+          <label class="fld"><span>时长（秒）</span><input type="number" min="0" step="0.5" data-id="${s.id}" data-field="row" data-key="duration" data-slot="${k}" value="${+(im.duration || 0)}"></label>
+        </div>
+        <div class="grid-fields">
+          <label class="fld"><span>音效 / BGM</span><input data-id="${s.id}" data-field="row" data-key="sfx" data-slot="${k}" value="${esc(im.sfx || "")}" placeholder="环境声、音乐"></label>
+          <label class="fld"><span>备注</span><input data-id="${s.id}" data-field="row" data-key="note" data-slot="${k}" value="${esc(im.note || "")}" placeholder="道具、服化、参考片"></label>
+        </div>
+      </div>
+    </div>`).join("")}</div>`;
+}
+function rowToolsHTML(s) {
+  const ims = shotImages(s);
+  const tools = ims.length < MAX_ROWS
+    ? `<button class="addrow" data-act="addrow" data-id="${s.id}">＋ 加一行画面（${Math.max(ims.length, 1) + 1}/${MAX_ROWS}）</button>`
+    : `<div class="rowtools"><span class="hint">已满 ${MAX_ROWS} 行</span><button class="mini2" data-act="delrow" data-id="${s.id}">删最后一行</button></div>`;
+  return tools;
+}
+function wallImagesHTML(s, i) {
+  const ims = shotImages(s).filter(rowHasImg);
+  if (!ims.length) return `<span class="gempty">＋ 画面</span>`;
+  return ims.map((im) => `<img src="${im.url}" style="aspect-ratio:${imgAspect(im).toFixed(4)}" alt="镜头 ${i + 1}">`).join("");
+}
+
+/* ============================ 持久化 ============================ */
+function save(silent) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    if (!silent) setSaveState("已保存 · " + new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
+  } catch (e) {
+    setSaveState("自动保存失败");
+    toast("本地存储空间不足（画面图较多）。请用「导出项目」保存 JSON 备份。", null, "warn");
+  }
+}
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  setSaveState("编辑中…");
+  saveTimer = setTimeout(() => save(), 500);
+}
+function setSaveState(t) { $("#saveState").textContent = t; }
+function load() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    if (!d || !Array.isArray(d.shots)) return false;
+    state = Object.assign(freshState(), d);
+    state.settings = Object.assign(freshState().settings, d.settings || {});
+    state.shots = d.shots.map((s) => Object.assign(newShot(), s, { id: s.id || uid() }));
+    return true;
+  } catch (e) { return false; }
+}
+
+/* ============================ 渲染 ============================ */
+function opts(list, cur) {
+  return list.map((v) => `<option${v === cur ? " selected" : ""}>${esc(v)}</option>`).join("");
+}
+function renderAll() {
+  normalizeShots();
+  $("#projName").value = state.name;
+  $("#script").value = state.script;
+  $("#setChars").value = state.settings.charsPerShot;
+  $("#setWps").value = state.settings.wps;
+  $("#setMin").value = state.settings.minDur;
+  $("#setDef").value = state.settings.defaultDur;
+  document.querySelectorAll("#viewCtl button").forEach((b) => b.classList.toggle("on", b.dataset.view === state.view));
+  renderShots(); renderTimeline(); updateStats();
+}
+function renderShots() {
+  const box = $("#shots"), wrap = $("#tableWrap");
+  const isTable = state.view === "table";
+  const isGrid = state.view === "grid";
+  box.style.display = isTable ? "none" : "flex";
+  box.classList.toggle("grid", isGrid);
+  wrap.style.display = isTable ? "block" : "none";
+  if (!state.shots.length) {
+    box.innerHTML = `<div class="empty">还没有分镜。<br>先粘贴剧本，点 <b>智能拆分分镜</b> 就能自动生成镜头。<br>
+      <button class="mini2" data-act="gotab" data-goto="script" style="margin-top:10px">去粘贴剧本</button></div>`;
+    wrap.innerHTML = `<div class="empty">还没有分镜。</div>`;
+    return;
+  }
+  box.innerHTML = isGrid ? gridHTML() : state.shots.map((s, i) => cardHTML(s, i)).join("");
+  if (isGrid) layoutWall();
+  if (isTable) wrap.innerHTML = tableHTML();
+}
+/* 画面墙排布：按每张图的比例把一行填满，行内等高、左右齐平（电影墙那种整齐感） */
+function layoutWall() {
+  const box = $("#shots");
+  if (!box || state.view !== "grid") return;
+  const cells = [...box.children].filter((el) => el.classList.contains("gcell"));
+  if (!cells.length) return;
+  const gap = 12;
+  const cs = getComputedStyle(box);
+  /* 留 3px 余量：每行宽度是四舍五入出来的，刚好铺满时会被 flex 判定为放不下而换行 */
+  const W = box.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0) - 3;
+  if (W <= 40) return;
+  const targetH = innerWidth < 620 ? 150 : innerWidth < 1081 ? 195 : 260;
+  const minH = Math.round(targetH * 0.62), maxH = Math.round(targetH * 1.6);
+  let i = 0;
+  while (i < cells.length) {
+    const row = [];
+    let sum = 0, filled = false;
+    while (i < cells.length) {
+      const ar = +cells[i].dataset.ar || 16 / 9;
+      row.push(cells[i]); sum += ar; i++;
+      if (sum * targetH + gap * (row.length - 1) >= W) { filled = true; break; }
+    }
+    let h = filled ? (W - gap * (row.length - 1)) / sum : targetH;
+    /* 行塞满后如果被压得太矮（横竖混排常见），把最后一张挪到下一行，让每格都够大 */
+    while (filled && row.length > 1 && h < targetH * 0.85) {
+      i--;
+      const back = row.pop();
+      sum -= (+back.dataset.ar || 16 / 9);
+      h = (W - gap * (row.length - 1)) / sum;
+    }
+    h = Math.max(minH, Math.min(maxH, h));
+    const hh = Math.round(h);
+    const widths = row.map((el) => Math.max(72, Math.round((+el.dataset.ar || 16 / 9) * h)));
+    row.forEach((el, k) => {
+      el.style.width = widths[k] + "px";
+      const img = el.querySelector(".gimg");
+      if (img) {
+        img.style.width = widths[k] + "px";
+        img.style.height = hh + "px";
+        img.style.aspectRatio = "auto";
+        img.style.maxHeight = "none";
+      }
+    });
+  }
+}
+/* 画面墙：一排排大图，专门用来"看画面" */
+function gridHTML() {
+  return state.shots.map((s, i) => `<div class="gcell" data-id="${s.id}" data-ar="${stackAspect(s).toFixed(4)}">
+    ${shotImages(s).filter(rowHasImg).length > 1 ? `<span class="gcount">${shotImages(s).filter(rowHasImg).length} 行</span>` : ""}
+    <button type="button" class="gbtn" data-act="lb" data-id="${s.id}" title="点开看大图">
+      <span class="gimg" style="aspect-ratio:${stackAspect(s).toFixed(4)}">${wallImagesHTML(s, i)}</span>
+    </button>
+    <div class="gcap">
+      <b>镜 ${String(i + 1).padStart(2, "0")}</b>
+      <span class="hint">${esc(s.size)} · ${durStr(s.duration)}s</span>
+      ${state.video ? `<button class="mini2 gplay" data-act="play" data-id="${s.id}">▶</button>` : ""}
+    </div>
+    <div class="gtext">${esc((s.picture || s.dialogue || "").slice(0, 46))}</div>
+  </div>`).join("");
+}
+function cardHTML(s, i) {
+  const t0 = startAt(i);
+  return `<article class="shot" data-id="${s.id}" id="shot-${s.id}">
+  <div class="shot-h">
+    <span class="grip" draggable="true" title="拖动排序">⠿</span>
+    <span class="badge-no">镜 ${String(i + 1).padStart(2, "0")}</span>
+    <input class="scene" data-id="${s.id}" data-field="scene" value="${esc(s.scene)}" placeholder="场次 / 场景，如 1. 咖啡馆 日 内">
+    <span class="tc" data-tc="${s.id}">${mmss(t0)} – ${mmss(t0 + (+s.duration || 0))}</span>
+    <span class="acts">
+      ${state.video ? `<button class="mini" data-act="play" data-id="${s.id}" title="跳到源视频对应位置">▶</button>` : ""}
+      <button class="mini" data-act="up" data-id="${s.id}" title="上移">↑</button>
+      <button class="mini" data-act="down" data-id="${s.id}" title="下移">↓</button>
+      <button class="mini" data-act="dup" data-id="${s.id}" title="复制">⧉</button>
+      <button class="mini" data-act="del" data-id="${s.id}" title="删除">✕</button>
+    </span>
+  </div>
+  <div class="shot-b">
+    ${imgStackHTML(s, i)}
+    <div class="shot-tools">${rowToolsHTML(s)}</div>
+  </div>
+</article>`;
+}
+function tableHTML() {
+  const head = ["镜号","场次","画面","画面内容","景别","角度","运镜","时长","台词 / 旁白","音效 / BGM","转场","备注","操作"];
+  /* 一个"画面行"= 一个表格行：图片和它这一行的所有字段天然在同一水平线上；
+     一个镜号有多行时，镜号 / 场次 / 操作 用 rowspan 合并 */
+  const rows = state.shots.map((s, i) => {
+    const list = shotImages(s).length ? shotImages(s) : [rowFromShot(s)];
+    const span = list.length;
+    return list.map((r, k) => {
+      const first = k === 0, last = k === span - 1;
+      const box = (key, kind) => {
+        if (kind === "select") return `<select data-id="${s.id}" data-field="row" data-key="${key}" data-slot="${k}">${opts(key === "size" ? SIZES : key === "angle" ? ANGLES : key === "move" ? MOVES : TRANS, r[key])}</select>`;
+        if (kind === "num") return `<input type="number" min="0" step="0.5" style="width:78px" data-id="${s.id}" data-field="row" data-key="${key}" data-slot="${k}" value="${+(r[key] || 0)}">`;
+        if (kind === "input") return `<input data-id="${s.id}" data-field="row" data-key="${key}" data-slot="${k}" value="${esc(r[key] || "")}">`;
+        return `<textarea data-id="${s.id}" data-field="row" data-key="${key}" data-slot="${k}" placeholder="${rowLabel(k)}">${esc(r[key] || "")}</textarea>`;
+      };
+      return `<tr class="${first ? "tr-first" : ""}">
+        ${first ? `<td class="n" rowspan="${span}">${i + 1}</td>
+          <td rowspan="${span}"><input data-id="${s.id}" data-field="scene" value="${esc(s.scene)}"></td>` : ""}
+        <td class="imgcell">
+          <div class="cellimg">
+            <span class="thumbwrap">
+              <span class="slotlabel">${rowLabel(k)}</span>
+              <button type="button" class="thumb thumb-tbl" data-id="${s.id}" data-slot="${k}" data-act="lb"
+                style="aspect-ratio:${imgAspect(r).toFixed(4)}" title="点开看大图；也可 Ctrl+V 粘贴 / 拖入图片">
+                ${rowHasImg(r) ? `<img src="${r.url}" alt="镜头 ${i + 1} ${rowLabel(k)}">` : `<span class="thumb-empty"><span>＋ 画面</span></span>`}
+              </button>
+            </span>
+            <div class="row">
+              <button class="mini2" data-act="img" data-id="${s.id}" data-slot="${k}">上传</button>
+              <button class="mini2" data-act="imgclear" data-id="${s.id}" data-slot="${k}">清除</button>
+            </div>
+            ${last && list.length < MAX_ROWS ? `<button class="addrow" data-act="addrow" data-id="${s.id}">＋ 加一行（${Math.max(list.length, 1) + 1}/${MAX_ROWS}）</button>` : ""}
+            ${last && list.length >= MAX_ROWS ? `<button class="mini2" data-act="delrow" data-id="${s.id}">删最后一行</button>` : ""}
+          </div>
+        </td>
+        <td>${box("picture")}</td>
+        <td>${box("size", "select")}</td>
+        <td>${box("angle", "select")}</td>
+        <td>${box("move", "select")}</td>
+        <td>${box("duration", "num")}</td>
+        <td>${box("dialogue")}</td>
+        <td>${box("sfx", "input")}</td>
+        <td>${box("transition", "select")}</td>
+        <td>${box("note", "input")}</td>
+        ${first ? `<td rowspan="${span}"><div class="tbl-acts">
+          ${state.video ? `<button class="mini2" data-act="play" data-id="${s.id}">▶</button>` : ""}
+          <button class="mini2" data-act="up" data-id="${s.id}">↑</button>
+          <button class="mini2" data-act="down" data-id="${s.id}">↓</button>
+          <button class="mini2" data-act="del" data-id="${s.id}">删除</button>
+        </div></td>` : ""}
+      </tr>`;
+    }).join("");
+  }).join("");
+  return `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+function renderTimeline() {
+  const tl = $("#timeline");
+  if (!state.shots.length) { tl.innerHTML = ""; return; }
+  tl.innerHTML = state.shots.map((s, i) =>
+    `<button class="seg ${sizeClass(s.size)}" data-act="jump" data-id="${s.id}"
+       title="镜 ${i + 1} · ${esc(s.size)} · ${s.duration}s · ${esc(s.scene)}"
+       style="flex:${Math.max(0.4, +s.duration || 1)}">${state.shots.length <= 26 ? i + 1 : ""}</button>`).join("");
+}
+function updateStats() {
+  const n = state.shots.length, t = totalDur();
+  const words = state.shots.reduce((a, s) => a + (s.dialogue || "").replace(/\s/g, "").length, 0);
+  $("#stShots").textContent = n;
+  $("#stDur").textContent = n ? `${fmtSec(t)} / ${mmss(t)}` : "0s";
+  $("#stAvg").textContent = n ? fmtSec(t / n) : "0s";
+  $("#stWords").textContent = words;
+  state.shots.forEach((s, i) => {
+    const el = document.querySelector(`[data-tc="${s.id}"]`);
+    if (el) { const t0 = startAt(i); el.textContent = `${mmss(t0)} – ${mmss(t0 + (+s.duration || 0))}`; }
+  });
+}
+function updateDerived() { renderTimeline(); updateStats(); }
+
+/* ============================ 智能拆分 ============================ */
+const SCENE_RE = /^(内景|外景|INT\.?|EXT\.?)/i;
+function isSceneHeading(l) {
+  if (SCENE_RE.test(l)) return true;
+  if (/^场次?\s*[:：]/.test(l)) return true;
+  if (l.length <= 26 && /^\d{1,3}\s*[\.、．]\s*\S/.test(l) && /(内景|外景|日|夜|晨|昏|景)/.test(l)) return true;
+  return false;
+}
+function sentences(text) {
+  const out = text.match(/[^。！？!?；;…\n]+[。！？!?；;…]*/g) || [];
+  return out.map((s) => s.trim()).filter(Boolean);
+}
+function guessSize(t) {
+  if (/(大特写|睫毛特写|瞳孔特写)/i.test(t)) return "大特写";
+  if (/(特写|眼睛|眼神|瞳孔|手指|嘴角|细节|logo|标志|屏幕|手机屏|文字)/i.test(t)) return "特写";
+  if (/(近景|半身|肩膀|面部)/i.test(t)) return "近景";
+  if (/(大远景|航拍|俯瞰全城|群山连绵)/i.test(t)) return "大远景";
+  if (/(远景|远处|辽阔|荒原|大海|天际线)/i.test(t)) return "远景";
+  if (/(全景|环境|城市|街道|房间|室内|人群|广场|教室|办公室|天空|招牌)/i.test(t)) return "全景";
+  return "";
+}
+function guessMove(t) {
+  if (/(手持|晃动|颤抖|抖动)/.test(t)) return "手持";
+  if (/(环绕|绕行|绕圈|旋转)/.test(t)) return "环绕";
+  if (/(跟拍|跟随|跟着|紧跟|追随)/.test(t)) return "跟";
+  if (/(上楼|下楼|走进|走入|走出|推门|穿过|经过|快步|奔跑|跑向|走过来|走过去)/.test(t)) return "跟";
+  if (/(推近|推进|逼近|向前推)/.test(t)) return "推";
+  if (/(拉远|后拉|拉开)/.test(t)) return "拉";
+  if (/(升起|下降|俯冲|升降|升镜|降镜)/.test(t)) return "升降";
+  if (/(横移|平移|掠过|移动)/.test(t)) return "移";
+  if (/(环顾|环视|扫视|视线|看向|望去|望向|抬头|低头|转身|左右张望)/.test(t)) return "摇";
+  return "固定";
+}
+/* 形如「特写：」「推镜：」「音效：」的前缀，是镜头信息而不是角色名 */
+const MOVE_PREFIX = { "推":"推","推镜":"推","推近":"推","拉":"拉","拉镜":"拉","拉远":"拉","摇":"摇","摇镜":"摇",
+  "移":"移","横移":"移","跟":"跟","跟拍":"跟","升降":"升降","环绕":"环绕","手持":"手持","变焦":"变焦" };
+const SFX_WORD = new Set(["音效","音乐","配乐","BGM","bgm","声音","环境声"]);
+const TRANS_WORD = new Set(["转场","过渡","剪辑"]);
+const OTHER_HINT = new Set(["镜头","画面","字幕","空镜","闪回","定格","注意","提示","说明","动作","画外"]);
+function splitScript(text, st) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const units = [];
+  let scene = "";
+  let lastSpeaker = "";
+  for (const line of lines) {
+    if (isSceneHeading(line)) { scene = line; continue; }
+    const dlg = line.match(/^([^：:（(]{1,14})(?:（[^）)]*）)?\s*[：:]\s*(.+)$/);
+    if (dlg && /[^\d\s]/.test(dlg[1])) {
+      const sp = dlg[1].trim();
+      const push = (kind, extra) => sentences(dlg[2]).forEach((s) => units.push(Object.assign({ kind, text: s, scene }, extra)));
+      if (SIZES.includes(sp)) { push("act", { sizeHint: sp }); continue; }
+      if (MOVE_PREFIX[sp]) { push("act", { moveHint: MOVE_PREFIX[sp] }); continue; }
+      if (SFX_WORD.has(sp)) { push("sfx", {}); continue; }
+      if (TRANS_WORD.has(sp)) { push("trans", {}); continue; }
+      if (OTHER_HINT.has(sp)) { push("act", {}); continue; }
+      lastSpeaker = sp;
+      push("dlg", { speaker: lastSpeaker });
+      continue;
+    }
+    const quote = line.match(/^[「『“"](.+)[」』”"]$/);
+    if (quote) {
+      sentences(quote[1]).forEach((s) => units.push({ kind: "dlg", speaker: lastSpeaker, text: s, scene }));
+      continue;
+    }
+    sentences(line).forEach((s) => units.push({ kind: "act", speaker: "", text: s, scene }));
+  }
+  if (!units.length) return [];
+
+  // 合并成镜头：达到目标字数、说话人变化、场次变化时断句
+  const groups = [];
+  let cur = [], chars = 0;
+  const flush = () => { if (cur.length) { groups.push(cur); cur = []; chars = 0; } };
+  for (const u of units) {
+    const curDlg = cur.find((x) => x.kind === "dlg");
+    if (cur.length && u.scene !== cur[0].scene) flush();
+    if (cur.length && curDlg && u.kind === "dlg" && u.speaker && curDlg.speaker && u.speaker !== curDlg.speaker) flush();
+    cur.push(u); chars += u.text.length;
+    const hasDlg = cur.some((x) => x.kind === "dlg");
+    const limit = hasDlg ? Math.max(8, st.charsPerShot * 0.75) : st.charsPerShot;
+    if (chars >= limit) flush();
+  }
+  flush();
+
+  // 生成镜头，并对无关键词的镜头做景别节奏交替
+  let prevSize = "";
+  let lastScene = "";
+  let cycle = 0;
+  return groups.map((g) => {
+    const pic = g.filter((x) => x.kind === "act").map((x) => x.text).join("");
+    const dlgLines = g.filter((x) => x.kind === "dlg");
+    const dlg = dlgLines.map((x) => (x.speaker ? x.speaker + "：" : "") + x.text).join("\n");
+    const sfx = g.filter((x) => x.kind === "sfx").map((x) => x.text).join("；");
+    const all = pic + dlg;
+    const hintedSize = (g.find((x) => x.sizeHint) || {}).sizeHint || "";
+    const hintedMove = (g.find((x) => x.moveHint) || {}).moveHint || "";
+    const transUnit = g.find((x) => x.kind === "trans");
+    const transition = transUnit ? (TRANS.find((t) => transUnit.text.includes(t)) || "切") : "切";
+    let size = hintedSize || guessSize(all);
+    if (!size) {
+      const seq = ["中景", "近景", "中景", "特写", "全景", "中景"];
+      size = seq[cycle++ % seq.length];
+    }
+    if (size === prevSize && !hintedSize && !guessSize(all)) size = size === "中景" ? "近景" : "中景";
+    prevSize = size;
+    let sec = 0;
+    g.forEach((u) => { sec += u.text.length / (u.kind === "dlg" ? st.wps : st.wps * 1.2); });
+    const dur = half(clamp(sec, st.minDur, 20));
+    const scene = g[0].scene || lastScene || "";
+    lastScene = scene;
+    return newShot({
+      scene,
+      size, move: hintedMove || guessMove(all), transition, duration: dur,
+      picture: pic,
+      dialogue: dlg,
+      sfx
+    });
+  });
+}
+
+/* ============================ 操作 ============================ */
+function doSplit() {
+  const text = $("#script").value.trim();
+  state.script = $("#script").value;
+  if (!text) { toast("请先粘贴剧本或文案。", null, "warn"); return; }
+  const shots = splitScript(text, state.settings);
+  if (!shots.length) { toast("没能识别出内容，试试每行一句话。", null, "warn"); return; }
+  if (state.shots.length && !confirm(`将用新拆分的 ${shots.length} 个镜头替换当前 ${state.shots.length} 个镜头，继续？`)) return;
+  state.shots = shots;
+  renderAll(); save();
+  setTab("shots");
+  closeScript();
+  toast(`已生成 ${shots.length} 个镜头，总时长 ${fmtSec(totalDur())}。可继续微调。`);
+}
+
+/* ---------- 手机 / 平板：标签切换与底部菜单 ---------- */
+function setTab(t) {
+  tab = t;
+  document.body.dataset.tab = t;
+  document.querySelectorAll("#tabbar button").forEach((b) => {
+    const on = b.dataset.tab === t;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
+}
+function closeSheet() {
+  $("#moreSheet").classList.remove("open");
+  $("#btnMore").setAttribute("aria-expanded", "false");
+  syncScrim();
+}
+function toggleSheet() {
+  const open = $("#moreSheet").classList.toggle("open");
+  $("#btnMore").setAttribute("aria-expanded", open ? "true" : "false");
+  syncScrim();
+}
+/* 宽屏：剧本面板是按需滑出的抽屉；窄屏：剧本是底部标签页 */
+const isNarrow = () => window.matchMedia("(max-width:1080px)").matches;
+function syncScrim() {
+  const on = document.body.classList.contains("script-open") || $("#moreSheet").classList.contains("open");
+  $("#scrim").classList.toggle("show", on);
+}
+function openScript() {
+  document.body.classList.add("script-open");
+  syncScrim();
+  setTimeout(() => { try { $("#script").focus(); } catch (e) {} }, 240);
+}
+function closeScript() {
+  document.body.classList.remove("script-open");
+  syncScrim();
+}
+function openScriptPanel() {
+  if (isNarrow()) setTab("script"); else openScript();
+}
+function addShot(afterId) {
+  const s = newShot({ scene: state.shots.length ? state.shots[state.shots.length - 1].scene : "" });
+  if (afterId) state.shots.splice(shotIndex(afterId) + 1, 0, s); else state.shots.push(s);
+  renderShots(); updateDerived(); save();
+  const el = document.getElementById("shot-" + s.id);
+  if (el) { el.scrollIntoView({ block: "center", behavior: "smooth" }); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1200); }
+}
+function moveShot(id, dir) {
+  const i = shotIndex(id); if (i < 0) return;
+  const j = i + dir; if (j < 0 || j >= state.shots.length) return;
+  [state.shots[i], state.shots[j]] = [state.shots[j], state.shots[i]];
+  renderShots(); updateDerived(); save();
+}
+function dupShot(id) {
+  const i = shotIndex(id); if (i < 0) return;
+  const c = Object.assign({}, state.shots[i], { id: uid() });
+  state.shots.splice(i + 1, 0, c);
+  renderShots(); updateDerived(); save();
+}
+function delShot(id) {
+  const i = shotIndex(id); if (i < 0) return;
+  lastDeleted = { shot: state.shots[i], index: i };
+  state.shots.splice(i, 1);
+  renderShots(); updateDerived(); save();
+  toast(`已删除镜头 ${i + 1}。`, () => {
+    if (!lastDeleted) return;
+    state.shots.splice(lastDeleted.index, 0, lastDeleted.shot);
+    lastDeleted = null;
+    renderShots(); updateDerived(); save();
+    toast("已撤销删除。");
+  });
+}
+/* slot：这个镜号里的第几行画面（0 起算）；不传就是第一行 */
+function setShotImage(id, slot, dataUrl, w, h) {
+  const s = shotById(id); if (!s) return;
+  const ims = shotImages(s);
+  const k = slot == null ? 0 : slot;
+  while (ims.length <= k) ims.push(ims.length ? blankRow(ims[ims.length - 1]) : rowFromShot(s));
+  if (!dataUrl) {
+    ims.splice(k, 1);
+  } else {
+    ims[k].url = dataUrl; ims[k].w = w || null; ims[k].h = h || null;
+    if (!w || !h) {
+      probeImageSize(dataUrl).then((d) => {
+        if (d && ims[k] && ims[k].url === dataUrl) {
+          ims[k].w = d.w; ims[k].h = d.h;
+          syncLegacyImage(s); renderShots(); save(true);
+          if ($("#imgDlg").open) paintLightbox();
+        }
+      });
+    }
+  }
+  syncLegacyImage(s);
+  renderShots(); save();
+  if ($("#imgDlg").open) paintLightbox();
+}
+const setImage = (id, dataUrl, w, h) => setShotImage(id, 0, dataUrl, w, h);
+
+/* ---------- 看大图（← → 翻镜号，↑ ↓ 翻该镜号里的行） ---------- */
+let lbIndex = -1, lbSlot = 0;
+function openLightbox(id, slot) {
+  const i = shotIndex(id); if (i < 0) return;
+  lbIndex = i;
+  lbSlot = slot == null ? 0 : slot;
+  activeThumbId = id;
+  paintLightbox();
+  if (!$("#imgDlg").open) $("#imgDlg").showModal();
+}
+function paintLightbox() {
+  const s = state.shots[lbIndex]; if (!s) return;
+  const ims = shotImages(s);
+  if (lbSlot >= ims.length) lbSlot = Math.max(0, ims.length - 1);
+  const im = ims[lbSlot];
+  $("#lbTitle").textContent = `镜 ${String(lbIndex + 1).padStart(2, "0")} · ${s.scene || "未填场次"} · ${durStr(s.duration)}s`
+    + (ims.length ? " · " + rowLabel(lbSlot) : "");
+  $("#lbPos").textContent = `${lbIndex + 1} / ${state.shots.length}` + (ims.length > 1 ? ` · 第 ${lbSlot + 1}/${ims.length} 行` : "");
+  $("#lbImg").innerHTML = im && im.url
+    ? `<img src="${im.url}" alt="镜头 ${lbIndex + 1} ${rowLabel(lbSlot)}">`
+    : `<div class="lb-empty">这一行还没有画面<br><small>点右下「上传图片」，或直接 Ctrl+V 粘贴</small></div>`;
+  $("#lbPrev").disabled = lbIndex <= 0;
+  $("#lbNext").disabled = lbIndex >= state.shots.length - 1;
+  $("#lbPrevRow").disabled = lbSlot <= 0;
+  $("#lbNextRow").disabled = lbSlot >= ims.length - 1;
+}
+function lightboxStep(d) {
+  const i = lbIndex + d;
+  if (i < 0 || i >= state.shots.length) return;
+  lbIndex = i;
+  lbSlot = 0;
+  activeThumbId = state.shots[i].id;
+  paintLightbox();
+}
+function lightboxRow(d) {
+  const s = state.shots[lbIndex]; if (!s) return;
+  const ims = shotImages(s);
+  const n = lbSlot + d;
+  if (n < 0 || n >= ims.length) return;
+  lbSlot = n;
+  paintLightbox();
+}
+/* 把图片文件压成 720px 宽的 JPEG dataURL（省本地存储空间） */
+function imageDataFromFile(file) {
+  return new Promise((resolve) => {
+    if (!file || !/^image\//.test(file.type)) return resolve(null);
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+        const maxW = 1080, sc = Math.min(1, maxW / iw);
+        const cv = document.createElement("canvas");
+        cv.width = Math.max(1, Math.round(iw * sc));
+        cv.height = Math.max(1, Math.round(ih * sc));
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        resolve({ url: cv.toDataURL("image/jpeg", 0.82), w: cv.width, h: cv.height, land: iw >= ih });
+      };
+      img.onerror = () => resolve(null);
+      img.src = fr.result;
+    };
+    fr.onerror = () => resolve(null);
+    fr.readAsDataURL(file);
+  });
+}
+function probeImageSize(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth || img.width, h: img.naturalHeight || img.height });
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+/* 老项目里的图片没存过尺寸，打开时补测一次，横竖版就能自动识别 */
+async function backfillAspects() {
+  const todo = state.shots.filter((s) => s.image && !s.imgW);
+  if (!todo.length) return;
+  let changed = false;
+  for (const s of todo) {
+    const d = await probeImageSize(s.image);
+    if (d) { s.imgW = d.w; s.imgH = d.h; changed = true; }
+  }
+  if (changed) { renderShots(); save(true); }
+}
+async function fileToImage(file, id, slot) {
+  if (!file || !/^image\//.test(file.type)) { toast("请选择图片文件（png / jpg / webp）。", null, "warn"); return; }
+  const r = await imageDataFromFile(file);
+  if (!r) { toast("图片读取失败。", null, "warn"); return; }
+  setShotImage(id, slot == null ? 0 : slot, r.url, r.w, r.h);
+}
+/* 批量导入：按文件名顺序填进前 N 个镜头的「画面」，镜头不够就自动补 */
+async function importImages(files) {
+  const list = Array.from(files || []).filter((f) => /^image\//.test(f.type));
+  if (!list.length) return;
+  list.sort((a, b) => a.name.localeCompare(b.name, "zh", { numeric: true }));
+  let done = 0, added = 0, portrait = 0;
+  for (let i = 0; i < list.length; i++) {
+    const r = await imageDataFromFile(list[i]);
+    if (!r) continue;
+    if (!state.shots[i]) { state.shots.push(newShot()); added++; }
+    const ims = shotImages(state.shots[i]);
+    if (!ims.length) ims.push(Object.assign(rowFromShot(state.shots[i]), { url: r.url, w: r.w, h: r.h }));
+    else Object.assign(ims[0], { url: r.url, w: r.w, h: r.h });
+    syncLegacyImage(state.shots[i]);
+    if (!r.land) portrait++;
+    done++;
+  }
+  renderShots(); updateDerived(); save();
+  toast(`已导入 ${done} 张画面${portrait ? "（其中 " + portrait + " 张竖版已自动按竖幅显示）" : ""}${added ? "，并自动补了 " + added + " 个镜头" : ""}。`);
+}
+
+/* ============================ 导出 ============================ */
+function download(name, content, mime) {
+  const blob = new Blob([content], { type: mime || "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+const safeName = () => (state.name || "分镜").replace(/[\\/:*?"<>|]/g, "_");
+function rows() {
+  return state.shots.map((s, i) => {
+    const t0 = startAt(i);
+    return [i + 1, s.scene,
+      shotField(s, "size"), shotField(s, "angle"), shotField(s, "move"), durStr(s.duration), mmss(t0),
+      shotField(s, "picture"), shotField(s, "dialogue"), shotField(s, "sfx"), shotField(s, "transition"), shotField(s, "note")];
+  });
+}
+const durStr = (d) => String(Math.round((+d || 0) * 10) / 10);
+function exportCsv() {
+  if (!state.shots.length) { toast("还没有分镜可导出。", null, "warn"); return; }
+  const head = ["镜号","场次","景别","机位角度","运镜","时长(秒)","起始时间","画面内容","台词/旁白","音效/BGM","转场","备注"];
+  const q = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+  const csv = [head, ...rows()].map((r) => r.map(q).join(",")).join("\r\n");
+  download(safeName() + "-分镜表.csv", "\ufeff" + csv, "text/csv;charset=utf-8");
+  toast("已导出 CSV（Excel 可直接打开）。");
+}
+function exportMd() {
+  if (!state.shots.length) { toast("还没有分镜可导出。", null, "warn"); return; }
+  const head = ["镜号","场次","景别","角度","运镜","时长","画面内容","台词/旁白","音效","转场","备注"];
+  const cell = (v) => String(v == null ? "" : v).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
+  const body = state.shots.map((s, i) => [i + 1, s.scene,
+    shotField(s, "size"), shotField(s, "angle"), shotField(s, "move"), durStr(s.duration) + "s",
+    shotField(s, "picture"), shotField(s, "dialogue"), shotField(s, "sfx"), shotField(s, "transition"), shotField(s, "note")].map(cell));
+  const md = [`# ${state.name} · 分镜表`, ``,
+    `- 镜头数：${state.shots.length}　总时长：${mmss(totalDur())}　生成日期：${new Date().toLocaleDateString("zh-CN")}`, ``,
+    `| ${head.join(" | ")} |`, `|${head.map(() => "---").join("|")}|`,
+    ...body.map((r) => `| ${r.join(" | ")} |`)].join("\n");
+  download(safeName() + "-分镜表.md", md, "text/markdown;charset=utf-8");
+  toast("已导出 Markdown。");
+}
+function buildPrint() {
+  const hasImg = state.shots.some((s) => shotImages(s).some((x) => x && x.url));
+  const body = state.shots.map((s, i) => `<tr>
+    <td class="p-no">${i + 1}</td>
+    ${hasImg ? `<td class="p-img"><div class="p-imgs">${shotImages(s).filter(rowHasImg).map((im) => `<img src="${im.url}" alt="">`).join("")}</div></td>` : ""}
+    <td>
+      ${(shotImages(s).length ? shotImages(s) : []).map((r, k) => `<div class="p-row">
+        <b>${rowLabel(k)}</b> ${esc(r.size || "")} · ${esc(r.angle || "")} · ${esc(r.move || "")} · ${durStr(r.duration)}s · ${esc(r.transition || "")}
+        ${r.picture ? `<div>${nl2br(r.picture)}</div>` : ""}
+        ${r.dialogue ? `<div class="p-dlg">${nl2br(r.dialogue)}</div>` : ""}
+        ${r.sfx ? `<div class="p-sfx">音效/BGM：${esc(r.sfx)}</div>` : ""}
+        ${r.note ? `<div class="p-sfx">备注：${esc(r.note)}</div>` : ""}
+      </div>`).join("")}
+    </td></tr>`).join("");
+  $("#printRoot").innerHTML = `<h1>${esc(state.name)} · 分镜表</h1>
+    <div class="meta">镜头数 ${state.shots.length}　总时长 ${mmss(totalDur())}　打印日期 ${new Date().toLocaleDateString("zh-CN")}</div>
+    <table><thead><tr><th>镜号</th>${hasImg ? "<th>画面</th>" : ""}<th>内容 / 台词</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+function doPrint() {
+  if (!state.shots.length) { toast("还没有分镜可打印。", null, "warn"); return; }
+  buildPrint();
+  setTimeout(() => window.print(), 60);
+}
+
+/* ============================ AI 辅助 ============================ */
+function aiPrompt() {
+  return `你是资深影视分镜师。请把我提供的剧本/文案拆解成可直接拍摄的分镜表。
+
+严格要求：只输出 JSON，不要任何解释、不要 markdown 代码块标记。格式如下：
+{"shots":[{"scene":"场次，如 1. 咖啡馆 日 内","size":"景别","angle":"机位角度","move":"运镜","transition":"转场","duration":3,"picture":"画面内容，一句话说清谁在哪做什么","dialogue":"台词或旁白，格式 角色：台词；没有就留空","sfx":"音效或BGM，可留空","note":"拍摄备注，可留空"}]}
+
+约束：
+- size 只能取：大远景、远景、全景、中景、中近景、近景、特写、大特写
+- angle 只能取：平视、俯视、仰视、侧拍、过肩、主观视角、鸟瞰
+- move 只能取：固定、推、拉、摇、移、跟、升降、环绕、手持、变焦
+- transition 只能取：切、叠化、淡入、淡出、划像、跳切、匹配剪辑
+- duration 是数字（秒，可含 0.5），按台词语速约 4.5 字/秒估算，单镜头 1.5–20 秒
+- 景别要有远近和节奏变化，不要整段都用同一个景别；动作段落适当切近景/特写
+- 台词逐句分配，不要整段塞进一个镜头
+
+剧本如下：
+---
+${$("#script").value.trim() || "（请先在上方粘贴剧本）"}`;
+}
+function parseLoose(txt) {
+  let t = String(txt).trim().replace(/^```[a-zA-Z]*\s*/, "").replace(/```\s*$/, "").trim();
+  const cands = [t.indexOf("{"), t.indexOf("[")].filter((i) => i >= 0);
+  if (!cands.length) throw new Error("找不到 JSON");
+  const start = Math.min(...cands);
+  const end = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+  if (end <= start) throw new Error("JSON 不完整");
+  const json = JSON.parse(t.slice(start, end + 1));
+  const arr = Array.isArray(json) ? json : (json.shots || json.shotList || json.分镜 || json.分镜表 || []);
+  if (!Array.isArray(arr) || !arr.length) throw new Error("没有找到分镜数组");
+  return arr;
+}
+const FIELD_ALIAS = {
+  scene: ["scene", "场次", "场景", "镜头场景"],
+  size: ["size", "景别", "镜头景别"],
+  angle: ["angle", "角度", "机位", "机位角度"],
+  move: ["move", "运镜", "运动", "镜头运动"],
+  transition: ["transition", "转场"],
+  duration: ["duration", "时长", "时长秒", "durationSeconds", "length"],
+  picture: ["picture", "画面", "画面内容", "内容", "description", "shot", "画面描述"],
+  dialogue: ["dialogue", "台词", "对白", "旁白", "配音"],
+  sfx: ["sfx", "音效", "音乐", "bgm"],
+  note: ["note", "备注", "说明", "备注说明"]
+};
+const pick = (o, field) => {
+  for (const k of FIELD_ALIAS[field]) {
+    if (o[k] !== undefined && o[k] !== null && String(o[k]).trim() !== "") return String(o[k]);
+    const hit = Object.keys(o).find((x) => x.replace(/\s/g, "") === k.toLowerCase());
+    if (hit && o[hit] !== undefined && String(o[hit]).trim() !== "") return String(o[hit]);
+  }
+  return "";
+};
+function importAI(txt) {
+  let arr;
+  try { arr = parseLoose(txt); }
+  catch (e) { toast("解析失败：" + e.message + "。请确认粘贴的是完整 JSON。", null, "warn"); return; }
+  if (state.shots.length && !confirm(`将用 AI 结果（${arr.length} 个镜头）替换当前 ${state.shots.length} 个镜头，继续？`)) return;
+  state.shots = arr.map((o) => {
+    const d = pick(o, "duration").replace(/[^\d.]/g, "");
+    const size = pick(o, "size");
+    return newShot({
+      scene: pick(o, "scene"), size: SIZES.includes(size) ? size : (size || "中景"),
+      angle: pick(o, "angle") || "平视", move: pick(o, "move") || "固定",
+      transition: pick(o, "transition") || "切",
+      duration: d ? half(clamp(parseFloat(d), 0.5, 60)) : state.settings.defaultDur,
+      picture: pick(o, "picture"), dialogue: pick(o, "dialogue"),
+      sfx: pick(o, "sfx"), note: pick(o, "note")
+    });
+  });
+  renderAll(); save();
+  toast(`已导入 ${state.shots.length} 个镜头，总时长 ${fmtSec(totalDur())}。`);
+}
+function copyText(txt, okMsg) {
+  const done = () => toast(okMsg || "已复制到剪贴板。");
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(done, fallback);
+  } else fallback();
+  function fallback() {
+    const ta = document.createElement("textarea");
+    ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) { toast("复制失败，请手动全选复制。", null, "warn"); }
+    ta.remove();
+  }
+}
+function openDialog(kind) {
+  const dlg = $("#aiDlg"), body = $("#aiBody"), foot = $("#aiFoot");
+  if (kind === "prompt") {
+    body.innerHTML = `<p class="hint" style="margin:0">点「复制提示词」，连同你的剧本一起发给 AI；再点「导入 AI 结果」把返回的 JSON 粘回来。</p>
+      <textarea id="aiOut" readonly>${esc(aiPrompt())}</textarea>`;
+    foot.innerHTML = `<button id="dCopy">复制提示词</button><button id="dClose">关闭</button>`;
+    foot.querySelector("#dCopy").onclick = () => copyText(aiPrompt(), "提示词已复制，直接发给 AI 即可。");
+    foot.querySelector("#dClose").onclick = () => dlg.close();
+  } else {
+    body.innerHTML = `<p class="hint" style="margin:0">把 AI 返回的 JSON 粘贴到下面（带不带 \`\`\`json 代码块都行），点导入即可覆盖当前分镜。</p>
+      <textarea id="aiOut" placeholder='{"shots":[{"scene":"1. 咖啡馆 日 内","size":"中景","duration":3,"picture":"...","dialogue":"..."}]}'></textarea>`;
+    foot.innerHTML = `<button class="primary" id="dImp">导入</button><button id="dClose">取消</button>`;
+    foot.querySelector("#dImp").onclick = () => { const v = body.querySelector("#aiOut").value; dlg.close(); importAI(v); };
+    foot.querySelector("#dClose").onclick = () => dlg.close();
+  }
+  dlg.showModal();
+}
+
+/* ============================ 视频导入与自动拆解 ============================ */
+const VID = { AW: 160, AH: 90, GRID: 4, THUMB_W: 288 };
+const videoEl = document.getElementById("srcVideo");
+let videoURL = null, currentVideo = null, scanCancel = false, scanBusy = false;
+const fmtMB = (n) => (n / 1048576).toFixed(1) + " MB";
+
+/* 把画面压成 4×4 网格的平均色，作为这一帧的指纹（对运动不敏感，对换场敏感） */
+function frameSignature(ctx, w, h) {
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const g = VID.GRID, sig = new Float32Array(g * g * 3);
+  const cw = w / g, ch = h / g;
+  for (let gy = 0; gy < g; gy++) {
+    const y0 = Math.floor(gy * ch), y1 = Math.min(h, Math.floor((gy + 1) * ch));
+    for (let gx = 0; gx < g; gx++) {
+      const x0 = Math.floor(gx * cw), x1 = Math.min(w, Math.floor((gx + 1) * cw));
+      let r = 0, gg = 0, b = 0, n = 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const p = (y * w + x) * 4;
+          r += d[p]; gg += d[p + 1]; b += d[p + 2]; n++;
+        }
+      }
+      n = n || 1;
+      const i = (gy * g + gx) * 3;
+      sig[i] = r / n; sig[i + 1] = gg / n; sig[i + 2] = b / n;
+    }
+  }
+  return sig;
+}
+const sigDistance = (a, b) => {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]);
+  return s / a.length;
+};
+const medianOf = (arr) => {
+  if (!arr.length) return 0;
+  const s = arr.slice().sort((a, b) => a - b), m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+/* 切点 = 帧间差异明显高于本片常态的位置。
+   用 中位数 + MAD 而不是 均值 + 标准差：后者会被切点本身的巨大差异抬高，
+   反而把"颜色相近但确实是换场"的第二、第三个切点漏掉。 */
+function detectCuts(samples, opt) {
+  const d = new Array(samples.length).fill(0);
+  for (let i = 1; i < samples.length; i++) d[i] = sigDistance(samples[i].sig, samples[i - 1].sig);
+  const vals = d.slice(1);
+  const med = medianOf(vals);
+  const mad = medianOf(vals.map((v) => Math.abs(v - med)));
+  const thr = Math.max(opt.minAbs, med + opt.k * 1.4826 * mad);
+  const idxs = [0];
+  for (let i = 1; i < samples.length; i++) {
+    if (d[i] > thr && samples[i].t - samples[idxs[idxs.length - 1]].t >= opt.minShot) idxs.push(i);
+  }
+  return { idxs, starts: idxs.map((i) => samples[i].t), thr, med, mad };
+}
+/* 采样是每 0.4 秒一格，切点最多会晚半格；用二分法把切点精确到 ±0.05 秒左右 */
+async function refineStarts(samples, cutIdxs, ctx, cv, cancelled) {
+  const out = [0];
+  const sigAt = async (t) => {
+    if (!(await seekVideo(t))) return null;
+    if (!videoEl.videoWidth) return null;
+    ctx.drawImage(videoEl, 0, 0, cv.width, cv.height);
+    return frameSignature(ctx, cv.width, cv.height);
+  };
+  for (let k = 1; k < cutIdxs.length; k++) {
+    if (cancelled()) break;
+    const i = cutIdxs[k];
+    const before = samples[i - 1], after = samples[i];
+    let lo = before.t, hi = after.t;
+    for (let step = 0; step < 3; step++) {
+      const mid = (lo + hi) / 2;
+      const sig = await sigAt(mid);
+      if (!sig) break;
+      if (sigDistance(sig, before.sig) < sigDistance(sig, after.sig)) lo = mid; else hi = mid;
+    }
+    out.push(Math.round((lo + hi) / 2 * 100) / 100);
+  }
+  if (out.length !== cutIdxs.length) return cutIdxs.map((i) => samples[i].t);
+  return out;
+}
+function segmentsFromStarts(starts, duration, minShot) {
+  const segs = [];
+  for (let i = 0; i < starts.length; i++) {
+    const s = starts[i], e = i + 1 < starts.length ? starts[i + 1] : duration;
+    if (e - s < 0.12) continue;
+    segs.push({ start: s, end: e });
+  }
+  if (segs.length > 1 && segs[segs.length - 1].end - segs[segs.length - 1].start < minShot * 0.6) {
+    segs[segs.length - 2].end = segs[segs.length - 1].end;
+    segs.pop();
+  }
+  return segs;
+}
+function waitEvent(el, name, ms) {
+  return new Promise((res) => {
+    let done = false;
+    const fin = () => { if (done) return; done = true; el.removeEventListener(name, fin); res(true); };
+    el.addEventListener(name, fin, { once: true });
+    setTimeout(() => { if (!done) { done = true; el.removeEventListener(name, fin); res(false); } }, ms || 4000);
+  });
+}
+function seekVideo(t, ms) {
+  if (Math.abs(videoEl.currentTime - t) < 0.002 && videoEl.readyState >= 2) return Promise.resolve(true);
+  const p = waitEvent(videoEl, "seeked", ms || 4000);
+  try { videoEl.currentTime = t; } catch (e) {}
+  return p;
+}
+/* 有的 webm 头里没有时长，用跳到极远位置的方式逼浏览器算出来 */
+async function ensureDuration(v) {
+  if (isFinite(v.duration) && v.duration > 0) return v.duration;
+  await new Promise((res) => {
+    let done = false;
+    const fin = () => { if (done) return; done = true; v.removeEventListener("timeupdate", fin); res(); };
+    v.addEventListener("timeupdate", fin);
+    try { v.currentTime = 1e101; } catch (e) { fin(); }
+    setTimeout(fin, 3000);
+  });
+  const d = isFinite(v.duration) ? v.duration : 0;
+  try { v.currentTime = 0; } catch (e) {}
+  return d;
+}
+async function collectSamples(opts, cb, cancelled) {
+  const cv = document.createElement("canvas");
+  cv.width = VID.AW; cv.height = VID.AH;
+  const ctx = cv.getContext("2d", { willReadFrequently: true });
+  const duration = videoEl.duration;
+  const samples = [];
+  const grab = () => {
+    if (!videoEl.videoWidth) return;
+    ctx.drawImage(videoEl, 0, 0, cv.width, cv.height);
+    samples.push({ t: videoEl.currentTime, sig: frameSignature(ctx, cv.width, cv.height) });
+  };
+  videoEl.muted = true;
+  /* 方案一：逐个时间点定位取帧。时间点最准，切点不会偏。 */
+  try { videoEl.pause(); } catch (e) {}
+  await seekVideo(0, 6000);
+  let seekFails = 0, seekTries = 0;
+  for (let t = 0; t < duration; t += opts.interval) {
+    if (cancelled()) break;
+    seekTries++;
+    if (!(await seekVideo(t, 2500))) {
+      seekFails++;
+      if (seekFails >= 3) break;   // 连续失败就别再一个个耗着了，直接换方案
+    }
+    grab();
+    cb(t, duration);
+  }
+  if (!cancelled()) { await seekVideo(Math.max(0, duration - 0.05)); grab(); }
+  /* 判断定位取帧是否真的有效：采样必须真正铺满整段时间，且 seek 不能大量超时。
+     只看最后一个样本的时间是不够的——seek 没生效时会一直拿到同一帧、时间戳却停在原地。 */
+  const span = samples.length > 1 ? samples[samples.length - 1].t - samples[0].t : 0;
+  const seekOk = samples.length >= 4 && span >= duration * 0.8 && seekFails <= seekTries * 0.3;
+  if (seekOk || cancelled()) return { samples, ctx, cv, mode: "seek" };
+  const seekPool = samples.slice();   // 最后兜底用：时间点准，但画面可能滞后
+
+  /* 方案二（兜底）：快放播放采样。快放时画面显示会滞后于 currentTime，
+     时间点不如方案一准，所以只在定位取帧不可用时使用。 */
+  samples.length = 0;
+  videoEl.playbackRate = opts.rate;
+  await seekVideo(0, 6000);
+  let playing = false;
+  try {
+    /* play() 在某些环境下会一直不 resolve，加个上限免得界面卡住 */
+    await Promise.race([
+      videoEl.play(),
+      new Promise((res, rej) => setTimeout(() => rej(new Error("play 超时")), 5000))
+    ]);
+    playing = true;
+  } catch (e) { playing = false; }
+  if (playing) {
+    let last = -1;
+    const t0 = performance.now();
+    /* 硬超时：视频再长也不能让界面卡在这里；rAF 不触发时由定时器兜底推进 */
+    const budget = Math.min(120000, (duration / Math.max(1, opts.rate)) * 1000 * 3 + 8000);
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (done) return; done = true; clearInterval(iv); resolve(); };
+      const tick = () => {
+        if (done) return;
+        if (cancelled()) return finish();
+        const cur = videoEl.currentTime;
+        if (videoEl.ended || cur >= duration - 0.03) return finish();
+        if (cur - last >= opts.interval) { last = cur; grab(); cb(cur, duration); }
+        if (performance.now() - t0 > budget) return finish();
+        if (cur < 0.05 && performance.now() - t0 > 2500) return finish();
+      };
+      const iv = setInterval(tick, 60);
+      const raf = () => { if (done) return; tick(); requestAnimationFrame(raf); };
+      requestAnimationFrame(raf);
+    });
+    try { videoEl.pause(); } catch (e) {}
+  }
+  videoEl.playbackRate = 1;
+  if (samples.length >= 4) return { samples, ctx, cv, mode: "play" };
+  if (seekPool.length >= 4) return { samples: seekPool, ctx, cv, mode: "loose" };
+  return { samples, ctx, cv, mode: "play" };
+}
+async function captureThumbs(segs, cb, cancelled) {
+  const cv = document.createElement("canvas");
+  const ctx = cv.getContext("2d");
+  const out = [];
+  for (let i = 0; i < segs.length; i++) {
+    if (cancelled()) break;
+    const mid = (segs[i].start + segs[i].end) / 2;
+    await seekVideo(mid);
+    const vw = videoEl.videoWidth || 640, vh = videoEl.videoHeight || 360;
+    const w = Math.min(VID.THUMB_W, vw);
+    cv.width = w; cv.height = Math.max(1, Math.round(w * vh / vw));
+    ctx.drawImage(videoEl, 0, 0, cv.width, cv.height);
+    let url = "";
+    try { url = cv.toDataURL("image/jpeg", 0.72); } catch (e) { url = ""; }
+    out.push(url ? { url, w: cv.width, h: cv.height } : null);
+    cb(i / segs.length, mid);
+  }
+  return out;
+}
+
+/* ---------- 视频栏 / 文件选择 ---------- */
+function stopVideo() {
+  if (videoURL) { try { URL.revokeObjectURL(videoURL); } catch (e) {} }
+  videoURL = null;
+  try { videoEl.pause(); videoEl.removeAttribute("src"); videoEl.load(); } catch (e) {}
+}
+function showVideoBar() {
+  if (!currentVideo && !state.video) { $("#vbar").classList.remove("on"); return; }
+  $("#vbar").classList.add("on");
+  $("#vbar").classList.toggle("off", !currentVideo);
+  if (currentVideo) {
+    $("#vname").textContent = currentVideo.name;
+    $("#vmeta").textContent = `${mmss(currentVideo.duration)} · ${fmtMB(currentVideo.size)} · 点镜头上的 ▶ 可跳到对应画面`;
+  } else {
+    $("#vname").textContent = state.video.name + "（已断开）";
+    $("#vmeta").textContent = "浏览器不保存视频文件：重新导入同一个视频即可继续边看边对分镜，分镜和画面截图不受影响。";
+  }
+}
+function dropVideo() {
+  stopVideo();
+  currentVideo = null;
+  state.video = null;
+  $("#vbar").classList.remove("on");
+  renderShots(); save();
+  toast("已移除源视频（分镜和画面截图保留）。");
+}
+async function pickVideoFile(file) {
+  stopVideo();
+  currentVideo = null;
+  $("#vidFileInfo").textContent = "读取中…";
+  $("#btnScanStart").disabled = true;
+  videoURL = URL.createObjectURL(file);
+  videoEl.src = videoURL;
+  videoEl.load();
+  const ok = await waitEvent(videoEl, "loadedmetadata", 15000);
+  if (!ok) {
+    $("#vidFileInfo").textContent = "读不出来";
+    toast("无法读取这个视频，可能是浏览器不支持的编码（例如 iPhone 的 HEVC）。建议转成 MP4 / H.264。", null, "warn");
+    stopVideo();
+    return;
+  }
+  const dur = await ensureDuration(videoEl);
+  if (!dur) {
+    $("#vidFileInfo").textContent = "读不出时长";
+    toast("读不到视频时长，换个文件或转成 MP4 再试。", null, "warn");
+    return;
+  }
+  currentVideo = { name: file.name, duration: dur, size: file.size };
+  $("#vidFileInfo").textContent = `${dur >= 60 ? mmss(dur) : dur.toFixed(1) + "秒"} · ${fmtMB(file.size)} · 已就绪`;
+  $("#btnScanStart").disabled = false;
+  showVideoBar();
+  if (dur > 900) toast("视频比较长，建议把采样间隔改成「快速 0.8 秒」。");
+}
+function openVideoDialog() {
+  $("#scanProg").style.display = "none";
+  $("#scanBar").style.width = "0%";
+  $("#vidFileInfo").textContent = currentVideo
+    ? `${currentVideo.duration >= 60 ? mmss(currentVideo.duration) : currentVideo.duration.toFixed(1) + "秒"} · 已就绪`
+    : (state.video ? "上次用的：" + state.video.name + "（需重新选择）" : "未选择");
+  $("#btnScanStart").disabled = !currentVideo;
+  $("#vidDlg").showModal();
+}
+function setScanProgress(p, msg) {
+  $("#scanBar").style.width = Math.round(clamp(p, 0, 1) * 100) + "%";
+  if (msg) $("#scanMsg").textContent = msg;
+}
+
+/* ---------- 拆解主流程 ---------- */
+async function runVideoScan() {
+  if (scanBusy || !currentVideo) return;
+  const sens = parseFloat($("#scanSens").value) || 2.2;
+  const step = parseFloat($("#scanInterval").value) || 0.4;
+  const opts = {
+    interval: step,
+    k: sens,
+    minAbs: sens >= 2.8 ? 24 : sens >= 1.8 ? 18 : 12,
+    minShot: Math.max(0.3, parseFloat($("#scanMin").value) || 1),
+    rate: step >= 0.8 ? 10 : 8
+  };
+  scanBusy = true; scanCancel = false;
+  $("#btnScanStart").disabled = true;
+  $("#scanProg").style.display = "";
+  setTab("shots");
+  videoEl.controls = false;
+  const dur = currentVideo.duration;
+  const t0 = performance.now();
+  try {
+    setScanProgress(0.01, "分析画面…");
+    const scan = await collectSamples(opts, (cur, total) => {
+      const p = total ? cur / total : 0;
+      const used = (performance.now() - t0) / 1000;
+      const eta = p > 0.05 ? Math.max(0, used / p - used) : 0;
+      setScanProgress(p * 0.7, `分析画面 ${Math.round(p * 100)}% · ${mmss(cur)} / ${mmss(total)}${eta > 2 ? " · 约剩 " + Math.round(eta) + " 秒" : ""}`);
+    }, () => scanCancel);
+    if (scanCancel) throw new Error("已取消");
+    const samples = scan.samples;
+    if (samples.length < 3) throw new Error("取不到画面帧。这个视频的编码可能不被当前浏览器支持，建议换成 MP4（H.264），或在手机浏览器里再试一次");
+    const { starts: rawStarts, idxs, thr, med, mad } = detectCuts(samples, opts);
+    const modeText = scan.mode === "seek" ? "逐点定位" : scan.mode === "play" ? "快放采样" : "兼容模式";
+    setScanProgress(0.7, `已找到 ${idxs.length - 1} 个切点（${modeText}），正在精确定位…`);
+    const starts = await refineStarts(samples, idxs, scan.ctx, scan.cv, () => scanCancel);
+    const segs = segmentsFromStarts(starts, dur, opts.minShot);
+    if (!segs.length) throw new Error("没有识别出画面变化");
+    setScanProgress(0.72, `检测到 ${segs.length} 个镜头（切点阈值 ${thr.toFixed(1)}，常态帧差 ${med.toFixed(1)}），正在抓取画面…`);
+    const thumbs = await captureThumbs(segs, (p, t) => {
+      setScanProgress(0.72 + p * 0.27, `抓取镜头画面 ${Math.round(p * 100)}% · 已到 ${mmss(t)}`);
+    }, () => scanCancel);
+    if (scanCancel) throw new Error("已取消");
+    applyVideoShots(segs, thumbs);
+    setScanProgress(1, `完成：${segs.length} 个镜头`);
+    setTimeout(() => { if (!scanBusy) $("#vidDlg").close(); }, 600);
+    toast(`已从视频拆出 ${segs.length} 个镜头，总时长 ${fmtSec(totalDur())}。点镜头上的 ▶ 可边看边对。`
+      + (scan.mode === "loose" ? "（本机取帧不稳定，画面截图可能有偏差，可换「快速」采样再试）" : ""));
+  } catch (e) {
+    const msg = String((e && e.message) || e);
+    if (msg.includes("取消")) toast("已取消拆解。");
+    else toast("拆解失败：" + msg, null, "warn");
+    setScanProgress(0, "已停止");
+  } finally {
+    scanBusy = false;
+    $("#btnScanStart").disabled = !currentVideo;
+    videoEl.controls = true;
+    try { videoEl.playbackRate = 1; videoEl.pause(); videoEl.currentTime = 0; } catch (e) {}
+  }
+}
+function applyVideoShots(segs, thumbs) {
+  const mode = $("#scanMode").value;
+  const shots = segs.map((g, i) => newShot({
+    duration: Math.max(0.2, Math.round((g.end - g.start) * 100) / 100),
+    videoStart: Math.round(g.start * 100) / 100,
+    image: (thumbs[i] && thumbs[i].url) || "",
+    imgW: thumbs[i] && thumbs[i].w,
+    imgH: thumbs[i] && thumbs[i].h
+  }));
+  state.shots = mode === "append" ? state.shots.concat(shots) : shots;
+  state.video = { name: currentVideo.name, duration: currentVideo.duration, scannedAt: Date.now() };
+  if (state.name === "未命名分镜" || !state.name) state.name = currentVideo.name.replace(/\.[^.]+$/, "");
+  renderAll(); save();
+  showVideoBar();
+}
+function playShot(id) {
+  const s = shotById(id); if (!s) return;
+  if (!videoEl.src) { toast("源视频未载入：点「视频拆解」重新选择这个视频，就能边看边对分镜。", null, "warn"); return; }
+  videoEl.currentTime = Math.max(0, s.videoStart || 0);
+  videoEl.play();
+}
+function highlightPlaying() {
+  if (!videoEl.src) return;
+  const t = videoEl.currentTime;
+  let hit = null;
+  for (const s of state.shots) {
+    if (s.videoStart == null) continue;
+    if (t >= s.videoStart && t < s.videoStart + (+s.duration || 0) + 0.05) { hit = s.id; break; }
+  }
+  document.querySelectorAll(".shot").forEach((el) => el.classList.toggle("playing", el.dataset.id === hit));
+}
+
+/* ============================ 交互绑定 ============================ */
+function toast(msg, undoFn, kind) {
+  const t = $("#toast"), act = $("#toastAct");
+  $("#toastMsg").textContent = msg;
+  t.className = "show" + (kind === "warn" ? " warn" : "");
+  if (undoFn) { act.style.display = ""; act.textContent = "撤销"; act.onclick = () => { hide(); undoFn(); }; }
+  else { act.style.display = "none"; act.onclick = null; }
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hide, kind === "warn" ? 6000 : 4000);
+  function hide() { t.className = ""; }
+}
+
+function bind() {
+  $("#projName").addEventListener("input", (e) => { state.name = e.target.value; scheduleSave(); });
+  $("#script").addEventListener("input", (e) => { state.script = e.target.value; scheduleSave(); });
+  $("#script").addEventListener("keydown", (e) => { if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); doSplit(); } });
+
+  const S = (sel, key) => $(sel).addEventListener("input", (e) => {
+    const v = parseFloat(e.target.value);
+    if (!isNaN(v)) { state.settings[key] = v; scheduleSave(); }
+  });
+  S("#setChars", "charsPerShot"); S("#setWps", "wps"); S("#setMin", "minDur"); S("#setDef", "defaultDur");
+
+  $("#btnSplit").onclick = doSplit;
+  $("#btnAdd").onclick = () => addShot(null);
+  $("#btnScript").onclick = openScriptPanel;
+  $("#btnScriptClose").onclick = closeScript;
+  $("#btnDemo").onclick = () => { $("#script").value = DEMO; state.script = DEMO; scheduleSave(); toast("已填入示例剧本，点「智能拆分分镜」试试。"); };
+  $("#btnClear").onclick = () => {
+    if (!confirm("清空剧本和全部分镜？此操作不可撤销。")) return;
+    state = freshState(); localStorage.removeItem(LS_KEY); renderAll(); setSaveState("已清空");
+  };
+  $("#btnNew").onclick = () => {
+    if (!confirm("新建空项目？当前内容请先导出项目 JSON 备份。")) return;
+    state = freshState(); renderAll(); save(); toast("已新建空项目。");
+  };
+  $("#btnSaveJson").onclick = () => {
+    download(safeName() + ".json", JSON.stringify(state, null, 2), "application/json");
+    toast("项目已导出为 JSON。");
+  };
+  $("#btnImportJson").onclick = () => { $("#filePick").dataset.mode = "project"; $("#filePick").click(); };
+  $("#filePick").addEventListener("change", (e) => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      try {
+        const d = JSON.parse(fr.result);
+        if (Array.isArray(d)) { importAI(fr.result); return; }
+        if (!d || !Array.isArray(d.shots)) throw new Error("不是分镜项目文件");
+        state = Object.assign(freshState(), d);
+        state.settings = Object.assign(freshState().settings, d.settings || {});
+        state.shots = d.shots.map((s) => Object.assign(newShot(), s));
+        renderAll(); save();
+        toast(`已载入项目「${state.name}」，共 ${state.shots.length} 个镜头。`);
+      } catch (err) { toast("载入失败：" + err.message, null, "warn"); }
+    };
+    fr.readAsText(f);
+  });
+  $("#btnExportCsv").onclick = exportCsv;
+  $("#btnExportMd").onclick = exportMd;
+  $("#btnPrint").onclick = doPrint;
+  $("#btnPrompt").onclick = () => openDialog("prompt");
+  $("#btnImportAI").onclick = () => openDialog("import");
+
+  // 视频拆解
+  $("#btnVideo").onclick = openVideoDialog;
+  $("#btnPickVideo").onclick = () => $("#videoPick").click();
+  $("#videoPick").addEventListener("change", (e) => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (f) pickVideoFile(f);
+  });
+  $("#btnScanStart").onclick = runVideoScan;
+  $("#btnScanClose").onclick = () => { if (!scanBusy) $("#vidDlg").close(); };
+  $("#btnDropVideo").onclick = dropVideo;
+  videoEl.addEventListener("timeupdate", highlightPlaying);
+  videoEl.addEventListener("play", highlightPlaying);
+
+  // 手机 / 平板：底部标签栏与「更多」菜单
+  $("#tabbar").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-tab]"); if (b) setTab(b.dataset.tab);
+  });
+  $("#btnMore").onclick = (e) => { e.stopPropagation(); toggleSheet(); };
+  $("#scrim").onclick = () => { closeSheet(); closeScript(); };
+  $("#moreSheet").addEventListener("click", (e) => { if (e.target.closest("button")) closeSheet(); });
+  document.addEventListener("click", (e) => {
+    if (!$("#moreSheet").classList.contains("open")) return;
+    if (e.target.closest("#moreSheet") || e.target.closest("#btnMore")) return;
+    closeSheet();
+  });
+
+  $("#viewCtl").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-view]"); if (!b) return;
+    state.view = b.dataset.view;
+    document.querySelectorAll("#viewCtl button").forEach((x) => x.classList.toggle("on", x === b));
+    renderShots(); scheduleSave();
+  });
+
+  const shots = $("#shots"), wrap = $("#tableWrap");
+  [shots, wrap].forEach((root) => {
+    root.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-act]");
+      if (b) {
+        e.preventDefault();
+        const id = b.dataset.id;
+        if (b.dataset.act === "up") moveShot(id, -1);
+        else if (b.dataset.act === "down") moveShot(id, 1);
+        else if (b.dataset.act === "dup") dupShot(id);
+        else if (b.dataset.act === "del") delShot(id);
+        else if (b.dataset.act === "play") playShot(id);
+        else if (b.dataset.act === "lb") openLightbox(id);
+        else if (b.dataset.act === "img") { pendingImgId = id; pendingImgSlot = +(b.dataset.slot || 0); $("#imgPick").click(); }
+        else if (b.dataset.act === "imgclear") setShotImage(id, +(b.dataset.slot || 0), "");
+        else if (b.dataset.act === "addrow") {
+          const s = shotById(id); if (!s) return;
+          const ims = shotImages(s);
+          if (ims.length === 0) ims.push(rowFromShot(s));
+          if (ims.length < MAX_ROWS) { ims.push(blankRow(ims[ims.length - 1])); renderShots(); save(); }
+        }
+        else if (b.dataset.act === "delrow") {
+          const s = shotById(id); if (!s) return;
+          const ims = shotImages(s);
+          if (ims.length) { ims.pop(); syncLegacyImage(s); renderShots(); save(); }
+        }
+        else if (b.dataset.act === "gotab") {
+          if ((b.dataset.goto || "script") === "script") openScriptPanel(); else setTab(b.dataset.goto);
+        }
+        return;
+      }
+      const th = e.target.closest(".thumb");
+      if (th) { activeThumbId = th.dataset.id; activeThumbSlot = +(th.dataset.slot || 0); openLightbox(th.dataset.id, activeThumbSlot); }
+    });
+  });
+
+  // 看大图
+  $("#lbPrev").onclick = () => lightboxStep(-1);
+  $("#lbNext").onclick = () => lightboxStep(1);
+  $("#lbPrevRow").onclick = () => lightboxRow(-1);
+  $("#lbNextRow").onclick = () => lightboxRow(1);
+  $("#lbClose").onclick = () => $("#imgDlg").close();
+  $("#lbUpload").onclick = () => {
+    const s = state.shots[lbIndex]; if (!s) return;
+    pendingImgId = s.id; pendingImgSlot = lbSlot;
+    $("#imgPick").click();
+  };
+  $("#lbClear").onclick = () => {
+    const s = state.shots[lbIndex]; if (!s) return;
+    setShotImage(s.id, lbSlot, "");
+    paintLightbox();
+  };
+  $("#imgPick").addEventListener("change", (e) => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (f && pendingImgId) fileToImage(f, pendingImgId, pendingImgSlot);
+    pendingImgId = null; pendingImgSlot = 0;
+  });
+  $("#btnImages").onclick = () => $("#imgPickMany").click();
+  $("#imgPickMany").addEventListener("change", (e) => {
+    const files = Array.from(e.target.files || []); e.target.value = "";
+    if (files.length) importImages(files);
+  });
+
+  // 输入即改，不重排 DOM，避免焦点丢失
+  document.addEventListener("input", (e) => {
+    const el = e.target.closest("[data-field]"); if (!el) return;
+    const s = shotById(el.dataset.id); if (!s) return;
+    const f = el.dataset.field;
+    if (f === "row") {
+      const rows = shotImages(s);
+      const k = +(el.dataset.slot || 0);
+      const key = el.dataset.key;
+      while (rows.length <= k) rows.push(rows.length ? blankRow(rows[rows.length - 1]) : rowFromShot(s));
+      if (key === "duration") rows[k].duration = Math.max(0, Math.round((parseFloat(el.value) || 0) * 10) / 10);
+      else rows[k][key] = el.value;
+      syncLegacyImage(s);
+      updateDerived(); scheduleSave();
+      return;
+    }
+    if (f === "duration") s.duration = half(clamp(parseFloat(el.value) || 0, 0.5, 120));
+    else s[f] = el.value;
+    updateDerived(); scheduleSave();
+  });
+  document.addEventListener("change", (e) => {
+    const el = e.target.closest("select[data-field]"); if (!el) return;
+    const s = shotById(el.dataset.id); if (!s) return;
+    if (el.dataset.field === "row") { renderTimeline(); scheduleSave(); return; }   // 行内下拉由 input 事件写入
+    s[el.dataset.field] = el.value;
+    renderTimeline(); scheduleSave();
+  });
+
+  // 粘贴 / 拖入图片
+  document.addEventListener("paste", (e) => {
+    if (!activeThumbId) return;
+    const items = e.clipboardData && e.clipboardData.items; if (!items) return;
+    for (const it of items) {
+      if (it.type && it.type.indexOf("image") === 0) {
+        const f = it.getAsFile();
+        if (f) { e.preventDefault(); fileToImage(f, activeThumbId, activeThumbSlot); toast("画面已粘贴到「" + rowLabel(activeThumbSlot) + "」。"); }
+        return;
+      }
+    }
+    const txt = e.clipboardData.getData("text");
+    if (txt && /^https?:\/\//.test(txt.trim())) {
+      e.preventDefault();
+      setShotImage(activeThumbId, activeThumbSlot, txt.trim());
+      toast("已使用图片链接（离线打开时可能不显示）。");
+    }
+  });
+  document.addEventListener("dragover", (e) => {
+    const th = e.target.closest(".thumb") || e.target.closest(".lb-img");
+    if (th && e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files")) { e.preventDefault(); }
+  });
+  document.addEventListener("drop", (e) => {
+    if (e.dataTransfer && e.dataTransfer.files.length && e.target.closest(".lb-img") && state.shots[lbIndex]) {
+      e.preventDefault();
+      fileToImage(e.dataTransfer.files[0], state.shots[lbIndex].id, lbSlot);
+      toast("画面已导入。");
+      return;
+    }
+    const th = e.target.closest(".thumb");
+    if (!th || !e.dataTransfer || !e.dataTransfer.files.length) return;
+    e.preventDefault();
+    fileToImage(e.dataTransfer.files[0], th.dataset.id, +(th.dataset.slot || 0));
+    toast("画面已导入。");
+  });
+
+  // 拖动排序
+  document.addEventListener("dragstart", (e) => {
+    const g = e.target.closest(".grip"); if (!g) return;
+    dragId = g.closest(".shot").dataset.id;
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", dragId); } catch (err) {}
+  });
+  shots.addEventListener("dragover", (e) => {
+    if (!dragId) return;
+    const over = e.target.closest(".shot"); if (!over || over.dataset.id === dragId) return;
+    e.preventDefault();
+    over.style.borderTop = "2px solid var(--accent)";
+  });
+  shots.addEventListener("dragleave", (e) => {
+    const over = e.target.closest(".shot"); if (over) over.style.borderTop = "";
+  });
+  shots.addEventListener("drop", (e) => {
+    if (!dragId) return;
+    const over = e.target.closest(".shot"); if (!over) return;
+    e.preventDefault();
+    shots.querySelectorAll(".shot").forEach((x) => (x.style.borderTop = ""));
+    const from = shotIndex(dragId), to = shotIndex(over.dataset.id);
+    if (from < 0 || to < 0 || from === to) { dragId = null; return; }
+    const [item] = state.shots.splice(from, 1);
+    state.shots.splice(to, 0, item);
+    dragId = null;
+    renderShots(); updateDerived(); save();
+  });
+  document.addEventListener("dragend", () => {
+    dragId = null;
+    shots.querySelectorAll(".shot").forEach((x) => (x.style.borderTop = ""));
+  });
+
+  $("#timeline").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-id]"); if (!b) return;
+    if (state.view !== "card") {
+      state.view = "card";
+      document.querySelectorAll("#viewCtl button").forEach((x) => x.classList.toggle("on", x.dataset.view === "card"));
+      renderShots();
+    }
+    const t = document.getElementById("shot-" + b.dataset.id);
+    if (t) { t.scrollIntoView({ block: "center", behavior: "smooth" }); t.classList.add("flash"); setTimeout(() => t.classList.remove("flash"), 1200); }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if ($("#imgDlg").open) {
+      if (e.key === "ArrowLeft") { e.preventDefault(); lightboxStep(-1); return; }
+      if (e.key === "ArrowRight") { e.preventDefault(); lightboxStep(1); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); lightboxRow(-1); return; }
+      if (e.key === "ArrowDown") { e.preventDefault(); lightboxRow(1); return; }
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); toast("已保存到本机浏览器。"); }
+    if (e.key === "Escape") { closeSheet(); closeScript(); }
+  });
+  window.addEventListener("beforeunload", () => { if (saveTimer) save(true); });
+  let wallTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(wallTimer);
+    wallTimer = setTimeout(layoutWall, 120);
+  });
+}
+
+/* ============================ 启动 ============================ */
+/* 兜底：万一数据或代码出错，不要让页面变成白屏——把错误摊开，并给出「导出备份 / 重试 / 清空」 */
+function showFatal(err) {
+  const box = document.createElement("div");
+  box.style.cssText = "position:fixed;inset:0;z-index:9999;background:#fff;color:#151922;padding:26px;overflow:auto;font:14px/1.7 system-ui,'Microsoft YaHei'";
+  box.innerHTML = `<h2 style="margin:0 0 6px">分镜台启动时遇到问题</h2>
+    <p style="color:#68727f;margin:0 0 14px">你的数据还在浏览器本地，通常没有丢。建议先点左边按钮导出备份，再重试。</p>
+    <pre style="white-space:pre-wrap;background:#f4f6fa;border:1px solid #e3e7ef;border-radius:8px;padding:12px;margin:0 0 14px;font-size:12px">${esc(String((err && err.stack) || err))}</pre>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button id="fatalJson" class="primary">导出我的数据（JSON 备份）</button>
+      <button id="fatalReload">重试</button>
+      <button id="fatalReset">清空本地数据并重开</button>
+    </div>`;
+  document.body.appendChild(box);
+  $("#fatalJson").onclick = () => download(safeName() + "-备份.json", localStorage.getItem(LS_KEY) || "{}", "application/json");
+  $("#fatalReload").onclick = () => location.reload();
+  $("#fatalReset").onclick = () => {
+    if (confirm("清空本地保存的分镜数据并重新打开？建议先导出备份。")) { localStorage.removeItem(LS_KEY); location.reload(); }
+  };
+}
+const DEMO = `1. 老小区楼道 - 夜 内
+声控灯一闪一闪。外卖员小雨抱着餐盒快步上楼，脚步声在楼道里回响。
+小雨：502……502在哪儿。
+她停在门口，发现门开着一条缝。
+特写：门缝里的暖光落在她脸上。
+
+2. 502室内 - 夜 内
+小雨推门进半个身子，屋里空荡，只有老式电视在闪。
+老人坐在沙发角落，手里攥着一张旧照片。
+小雨：您好，您的外卖到了。
+老人（抬头）：放桌上吧，孩子。
+近景：小雨把餐盒放下，视线落在照片上。
+小雨：这照片……是您儿子吗？
+老人：他在外地，说今年回来。
+窗外烟花亮起，屋里一下安静下来。
+
+3. 楼道 - 夜 外
+小雨关上门，靠在墙上长长吐了口气。
+她掏出手机，给妈妈发了条语音。
+小雨：妈，我过年回去。
+手机屏幕特写，发送成功。
+她下楼，楼道灯一次亮起。`;
+
+(function init() {
+  const restored = load();
+  bind();
+  try { renderAll(); }
+  catch (e) {
+    console.error(e);
+    showFatal(e);
+    return;
+  }
+  setSaveState(restored ? "已恢复上次编辑" : "就绪");
+  if (!restored) { state.script = DEMO; renderAll(); }
+  setTab(state.shots.length ? "shots" : "script");
+  showVideoBar();
+  backfillAspects();   // 老项目里的图片补测横竖版
+  /* 用网址打开时注册离线缓存：加到主屏后没网也能用（file:// 打开时会自动跳过） */
+  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
