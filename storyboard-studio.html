@@ -532,6 +532,16 @@
       <button class="primary" id="btnProjSaveAs">＋ 把当前项目另存为新的</button>
       <span class="hint">当前项目会自动保存；这里可以打开、复制、导出或删除以前的项目。</span>
     </div>
+    <div class="row">
+      <span class="hint" id="storageInfo">存储用量读取中…</span>
+      <button class="mini2" id="btnPersist">申请长期保存</button>
+    </div>
+    <label class="fld" style="max-width:260px"><span>导入图片的清晰度（越小越省空间）</span>
+      <select id="setImgMax">
+        <option value="1080">高清 · 最长边 1080px（默认）</option>
+        <option value="720">标准 · 最长边 720px</option>
+        <option value="480">省空间 · 最长边 480px</option>
+      </select></label>
     <div id="projList" class="proj-list"></div>
   </div>
   <div class="dlg-f"><button id="btnProjClose">关闭</button></div>
@@ -1582,7 +1592,7 @@ function imageDataFromFile(file) {
       const img = new Image();
       img.onload = () => {
         const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-        const maxW = 1080, sc = Math.min(1, maxW / iw);
+        const maxW = +(state.settings.imgMax) || 1080, sc = Math.min(1, maxW / iw);
         const cv = document.createElement("canvas");
         cv.width = Math.max(1, Math.round(iw * sc));
         cv.height = Math.max(1, Math.round(ih * sc));
@@ -2204,8 +2214,22 @@ function highlightPlaying() {
 /* ============================ 交互绑定 ============================ */
 /* ---------- 项目库：列出 / 打开 / 另存 / 重命名 / 副本 / 导出 / 删除 ---------- */
 async function openProjectDialog() {
+  refreshStorageInfo();
+  const sel = $("#setImgMax");
+  if (sel) sel.value = String(state.settings.imgMax || 1080);
   await renderProjectList();
   if (!$("#projDlg").open) $("#projDlg").showModal();
+}
+/* 存储用量 + 长期保存：明确告诉用户占的是本机空间、还能放多少 */
+async function refreshStorageInfo() {
+  const el = $("#storageInfo"); if (!el) return;
+  try {
+    const est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null;
+    const per = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null;
+    if (!est || !est.quota) { el.textContent = "这个浏览器不给存储用量信息，但数据仍然存在本机。"; return; }
+    el.textContent = "本机已用 " + (est.usage / 1048576).toFixed(1) + " MB ／ 可用 " + (est.quota / 1073741824).toFixed(1) + " GB"
+      + (per ? " · 已开启长期保存" : " · 未开启长期保存");
+  } catch (e) { el.textContent = ""; }
 }
 async function renderProjectList() {
   const box = $("#projList");
@@ -2321,6 +2345,19 @@ function bind() {
   // 项目库
   $("#btnProjects").onclick = () => { closeSheet(); openProjectDialog(); };
   $("#btnProjClose").onclick = () => $("#projDlg").close();
+  $("#btnPersist").onclick = async () => {
+    try {
+      const ok = navigator.storage && navigator.storage.persist ? await navigator.storage.persist() : false;
+      toast(ok ? "已开启长期保存：浏览器不会再自动清理这些数据。"
+               : "浏览器这次没批准。把分镜台「添加到主屏幕」并常用它，通常就会批准；不批准也不会丢，只是空间紧张时可能被清理。", null, ok ? null : "warn");
+      refreshStorageInfo();
+    } catch (e) {}
+  };
+  $("#setImgMax").onchange = (e) => {
+    state.settings.imgMax = +e.target.value || 1080;
+    save(true);
+    toast("以后导入的图片按最长边 " + state.settings.imgMax + "px 存（已有的图不变）。");
+  };
   $("#btnProjSaveAs").onclick = async () => {
     const name = prompt("另存为新项目，叫什么名字？", (state.name || "未命名分镜") + " 副本");
     if (name == null) return;
