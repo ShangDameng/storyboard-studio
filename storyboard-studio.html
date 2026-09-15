@@ -222,6 +222,17 @@
   .lb-img img{max-width:100%;max-height:72vh;display:block;object-fit:contain}
   .lb-empty{color:var(--muted);text-align:center;padding:64px 40px;line-height:1.9}
   .lb-bot{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
+
+  /* 项目库 */
+  .proj-list{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow:auto}
+  .proj-row{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff}
+  .proj-row.cur{border-color:var(--accent);background:var(--accent-soft)}
+  .proj-row .pthumb{width:96px;height:54px;flex:0 0 auto;border-radius:6px;background:#eef1f6;overflow:hidden;
+    display:flex;align-items:center;justify-content:center;color:#98a2b3;font-size:11px}
+  .proj-row .pthumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .proj-row .pinfo{flex:1;min-width:0}
+  .proj-row .pinfo b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .proj-row .pacts{display:flex;gap:6px;flex-wrap:wrap}
   .thumb-sm{width:152px;max-width:152px;max-height:300px;margin:0;cursor:zoom-in}
   .thumb{cursor:zoom-in}
   /* 行内字段：画面内容 / 台词 / 音效 变高，和这一行的图片齐平 */
@@ -413,6 +424,7 @@
   <span class="save-state" id="saveState">就绪</span>
   <div class="sheet-actions" id="moreSheet" role="group" aria-label="项目操作">
     <div class="sheet-h"><span>项目操作</span><button type="button" id="btnSheetClose" class="mini2">关闭</button></div>
+    <button id="btnProjects">项目库</button>
     <button id="btnNew" title="清空当前项目">新建</button>
     <button id="btnSaveJson">导出项目</button>
     <button id="btnImportJson">载入项目</button>
@@ -512,6 +524,18 @@
 <datalist id="sizeList"></datalist>
 <datalist id="angleList"></datalist>
 <datalist id="moveList"></datalist>
+
+<dialog id="projDlg">
+  <div class="dlg-h">我的项目 <span class="hint" style="font-weight:400">（都存在这台设备上，随时能切回来）</span></div>
+  <div class="dlg-b">
+    <div class="row">
+      <button class="primary" id="btnProjSaveAs">＋ 把当前项目另存为新的</button>
+      <span class="hint">当前项目会自动保存；这里可以打开、复制、导出或删除以前的项目。</span>
+    </div>
+    <div id="projList" class="proj-list"></div>
+  </div>
+  <div class="dlg-f"><button id="btnProjClose">关闭</button></div>
+</dialog>
 
 <dialog id="imgDlg">
   <div class="lb">
@@ -615,7 +639,7 @@ let toastTimer = null;
 
 function freshState() {
   return {
-    v: 1, name: "未命名分镜", script: "", shots: [],
+    v: 1, id: "p" + uid(), name: "未命名分镜", script: "", shots: [], savedAt: 0,
     settings: { charsPerShot: 24, wps: 4.5, minDur: 1.5, defaultDur: 3 },
     view: "card"
   };
@@ -703,17 +727,18 @@ const shotText = (s, key) => shotField(s, key);
 /* ============================ 图片存储 ============================
    localStorage 只有 5MB 左右，几张照片就爆。这里把图片本体存进 IndexedDB
    （容量通常几百 MB），localStorage 只留文字和结构，彻底解决“存储空间不足”。 */
-const IMG_DB = "fenjingtai-img", IMG_STORE = "images";
+const IMG_DB = "fenjingtai-img", IMG_STORE = "images", PROJ_STORE = "projects";
 let imgDB = null;
 const IMG = new Map();                       // imgId → dataURL（内存缓存，渲染时同步取）
 function openImgDB() {
   return new Promise((resolve) => {
     try {
       if (!window.indexedDB) return resolve(null);
-      const req = indexedDB.open(IMG_DB, 1);
+      const req = indexedDB.open(IMG_DB, 2);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(IMG_STORE)) db.createObjectStore(IMG_STORE);
+        if (!db.objectStoreNames.contains(PROJ_STORE)) db.createObjectStore(PROJ_STORE);
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);
@@ -742,6 +767,37 @@ function idbAll() {
     if (!imgDB) return resolve([]);
     try {
       const store = imgDB.transaction(IMG_STORE, "readonly").objectStore(IMG_STORE);
+      const ks = store.getAllKeys(), vs = store.getAll();
+      let keys = null, vals = null;
+      const done = () => { if (keys && vals) resolve(keys.map((k, i) => [k, vals[i]])); };
+      ks.onsuccess = () => { keys = ks.result; done(); };
+      vs.onsuccess = () => { vals = vs.result; done(); };
+      store.transaction.onerror = () => resolve([]);
+    } catch (e) { resolve([]); }
+  });
+}
+/* ---- 项目库：把每个项目整体存进 IndexedDB，可以随时切回去 ---- */
+function idbProjPut(id, text) {
+  return new Promise((resolve) => {
+    if (!imgDB) return resolve(false);
+    try {
+      const tx = imgDB.transaction(PROJ_STORE, "readwrite");
+      tx.objectStore(PROJ_STORE).put(text, id);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+      tx.onabort = () => resolve(false);
+    } catch (e) { resolve(false); }
+  });
+}
+function idbProjDelete(id) {
+  if (!imgDB) return;
+  try { imgDB.transaction(PROJ_STORE, "readwrite").objectStore(PROJ_STORE).delete(id); } catch (e) {}
+}
+function idbProjAll() {
+  return new Promise((resolve) => {
+    if (!imgDB) return resolve([]);
+    try {
+      const store = imgDB.transaction(PROJ_STORE, "readonly").objectStore(PROJ_STORE);
       const ks = store.getAllKeys(), vs = store.getAll();
       let keys = null, vals = null;
       const done = () => { if (keys && vals) resolve(keys.map((k, i) => [k, vals[i]])); };
@@ -786,6 +842,7 @@ async function initImageStore() {
 function persistPayload() {
   return {
     v: state.v, name: state.name, script: state.script, video: state.video, view: state.view,
+    id: state.id, savedAt: state.savedAt,
     settings: state.settings,
     shots: state.shots.map((s) => Object.assign({}, s, {
       image: (s.image && s.image.indexOf("data:") !== 0) ? s.image : "",
@@ -963,12 +1020,42 @@ function wallImagesHTML(s, i) {
 /* ============================ 持久化 ============================ */
 function save(silent) {
   try {
+    state.savedAt = Date.now();
     localStorage.setItem(LS_KEY, JSON.stringify(persistPayload()));
+    saveProjectRecord();          // 同时写进项目库，方便以后从列表里打开
     if (!silent) setSaveState("已保存 · " + new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
   } catch (e) {
     setSaveState("自动保存失败");
     toast("本地存档写不进去了（文字数据过大）。图片已经存在大容量库里，建议用「导出项目」备份一次，并删掉一些不再需要的镜头。", null, "warn");
   }
+}
+/* 每个项目在项目库里有一条记录（图片单独存在 images 里，不重复占空间） */
+function ensureProjectId() {
+  if (!state.id) state.id = "p" + uid();
+  return state.id;
+}
+async function saveProjectRecord() {
+  if (!imgDB) return;
+  ensureProjectId();
+  await idbProjPut(state.id, JSON.stringify(persistPayload()));
+}
+/* 项目库里的一条记录 → 可读信息（含首图缩略图） */
+function projectInfo([id, text]) {
+  let d = null;
+  try { d = JSON.parse(text); } catch (e) { return null; }
+  if (!d) return null;
+  const shots = Array.isArray(d.shots) ? d.shots : [];
+  let thumb = "";
+  for (const s of shots) {
+    const rows = Array.isArray(s.images) ? s.images : [];
+    for (const r of rows) {
+      const src = r && (r.imgId ? IMG.get(r.imgId) : r.url);
+      if (src) { thumb = src; break; }
+    }
+    if (thumb) break;
+  }
+  const total = shots.reduce((a, s) => a + (Array.isArray(s.images) ? s.images.reduce((b, r) => b + (+(r && r.duration) || 0), 0) : 0), 0);
+  return { id: id, name: d.name || "未命名分镜", shots: shots.length, total: total, savedAt: d.savedAt || 0, thumb: thumb, data: text };
 }
 function scheduleSave() {
   clearTimeout(saveTimer);
@@ -2115,6 +2202,87 @@ function highlightPlaying() {
 }
 
 /* ============================ 交互绑定 ============================ */
+/* ---------- 项目库：列出 / 打开 / 另存 / 重命名 / 副本 / 导出 / 删除 ---------- */
+async function openProjectDialog() {
+  await renderProjectList();
+  if (!$("#projDlg").open) $("#projDlg").showModal();
+}
+async function renderProjectList() {
+  const box = $("#projList");
+  box.innerHTML = `<p class="hint" style="margin:0">读取中…</p>`;
+  const all = (await idbProjAll()).map(projectInfo).filter(Boolean).sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+  if (!all.length) { box.innerHTML = `<p class="hint" style="margin:0">还没有保存过的项目。改点内容就会自动存一份进来。</p>`; return; }
+  box.innerHTML = all.map((p) => `<div class="proj-row ${p.id === state.id ? "cur" : ""}" data-pid="${p.id}">
+    <div class="pthumb">${p.thumb ? `<img src="${p.thumb}" alt="">` : "无画面"}</div>
+    <div class="pinfo">
+      <b>${esc(p.name)}${p.id === state.id ? "（当前）" : ""}</b>
+      <span class="hint">${p.shots} 个镜头 · 总时长 ${mmss(p.total)} · ${p.savedAt ? new Date(p.savedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}</span>
+    </div>
+    <div class="pacts">
+      <button class="mini2 primary" data-pact="open" data-pid="${p.id}">打开</button>
+      <button class="mini2" data-pact="rename" data-pid="${p.id}">重命名</button>
+      <button class="mini2" data-pact="copy" data-pid="${p.id}">复制一份</button>
+      <button class="mini2" data-pact="export" data-pid="${p.id}">导出</button>
+      <button class="mini2" data-pact="del" data-pid="${p.id}">删除</button>
+    </div>
+  </div>`).join("");
+}
+async function applyProjectRecord(rec) {
+  let d = null;
+  try { d = JSON.parse(rec.data); } catch (e) { toast("这个项目的数据读不出来。", null, "warn"); return; }
+  state = Object.assign(freshState(), d);
+  state.settings = Object.assign(freshState().settings, d.settings || {});
+  state.shots = (Array.isArray(d.shots) ? d.shots : []).map((s) => Object.assign(newShot(), s));
+  state.id = rec.id;
+  normalizeShots();
+  renderAll(); save(true);
+  setSaveState("已打开「" + (state.name || "未命名分镜") + "」");
+  toast("已打开「" + (state.name || "未命名分镜") + "」，共 " + state.shots.length + " 个镜头。");
+}
+function exportProjectRecord(rec) {
+  let d = null;
+  try { d = JSON.parse(rec.data); } catch (e) { toast("导出失败。", null, "warn"); return; }
+  d.shots = (Array.isArray(d.shots) ? d.shots : []).map((s) => Object.assign({}, s, {
+    images: (Array.isArray(s.images) ? s.images : []).map((r) => Object.assign({}, r, { url: r && r.imgId ? (IMG.get(r.imgId) || "") : (r && r.url) || "" }))
+  }));
+  download((d.name || "分镜").replace(/[\\/:*?"<>|]/g, "_") + ".json", JSON.stringify(d, null, 2), "application/json");
+}
+async function projectAction(act, pid) {
+  const all = (await idbProjAll()).map(projectInfo).filter(Boolean);
+  const rec = all.find((p) => p.id === pid);
+  if (!rec) return;
+  if (act === "open") {
+    await applyProjectRecord(rec);
+    $("#projDlg").close();
+  } else if (act === "rename") {
+    const name = prompt("新的项目名", rec.name);
+    if (name == null) return;
+    const d = JSON.parse(rec.data);
+    d.name = name.trim() || rec.name;
+    await idbProjPut(pid, JSON.stringify(d));
+    if (pid === state.id) { state.name = d.name; $("#projName").value = d.name; }
+    await renderProjectList();
+  } else if (act === "copy") {
+    const d = JSON.parse(rec.data);
+    d.id = "p" + uid();
+    d.name = rec.name + " 副本";
+    d.savedAt = Date.now();
+    d.shots = (Array.isArray(d.shots) ? d.shots : []).map((s) => Object.assign({}, s, { id: uid() }));
+    await idbProjPut(d.id, JSON.stringify(d));
+    await renderProjectList();
+    toast("已复制成「" + d.name + "」。");
+  } else if (act === "export") {
+    exportProjectRecord(rec);
+  } else if (act === "del") {
+    if (!confirm("删除项目「" + rec.name + "」？删了就找不回来了（建议先导出备份）。")) return;
+    idbProjDelete(pid);
+    await sleepMs(120);
+    await renderProjectList();
+    toast("已删除「" + rec.name + "」。");
+  }
+}
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
 function toast(msg, undoFn, kind) {
   const t = $("#toast"), act = $("#toastAct");
   $("#toastMsg").textContent = msg;
@@ -2147,9 +2315,30 @@ function bind() {
     state = freshState(); localStorage.removeItem(LS_KEY); renderAll(); setSaveState("已清空");
   };
   $("#btnNew").onclick = () => {
-    if (!confirm("新建空项目？当前内容请先导出项目 JSON 备份。")) return;
+    if (!confirm("新建空项目？（当前项目已经自动存进「项目库」，可以随时切回来）")) return;
     state = freshState(); renderAll(); save(); toast("已新建空项目。");
   };
+  // 项目库
+  $("#btnProjects").onclick = () => { closeSheet(); openProjectDialog(); };
+  $("#btnProjClose").onclick = () => $("#projDlg").close();
+  $("#btnProjSaveAs").onclick = async () => {
+    const name = prompt("另存为新项目，叫什么名字？", (state.name || "未命名分镜") + " 副本");
+    if (name == null) return;
+    state.id = "p" + uid();
+    state.name = name.trim() || "未命名分镜";
+    state.savedAt = Date.now();
+    $("#projName").value = state.name;
+    await saveProjectRecord();
+    save(true);
+    await renderProjectList();
+    toast("已另存为「" + state.name + "」，以后可以从「项目库」里打开。");
+  };
+  $("#projList").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-pact]");
+    if (!b) return;
+    e.preventDefault();
+    projectAction(b.dataset.pact, b.dataset.pid);
+  });
   $("#btnSaveJson").onclick = () => {
     /* 导出的 JSON 必须自带图片，方便换设备恢复 */
     const payload = persistPayload();
@@ -2542,6 +2731,8 @@ const DEMO = `1. 老小区楼道 - 夜 内
     const restored = load();
     bind();
     await initImageStore();          // 先把本地大容量存储里的图片读进内存
+    ensureProjectId();
+    saveProjectRecord();             // 当前项目也登记进项目库
     try { renderAll(); }
     catch (e) {
       console.error(e);
