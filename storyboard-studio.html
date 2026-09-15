@@ -542,6 +542,12 @@
         <option value="720">标准 · 最长边 720px</option>
         <option value="480">省空间 · 最长边 480px</option>
       </select></label>
+    <div class="row">
+      <button class="mini2" id="btnSnapNow">立即备份一次</button>
+      <button class="mini2" id="btnExportAll">导出全部项目（含图片）</button>
+      <span class="hint">程序更新只换页面、不会动你的数据；这里再留几份快照，万一也能找回。</span>
+    </div>
+    <div id="backupList" class="proj-list" style="max-height:20vh"></div>
     <div id="projList" class="proj-list"></div>
   </div>
   <div class="dlg-f"><button id="btnProjClose">关闭</button></div>
@@ -649,7 +655,7 @@ let toastTimer = null;
 
 function freshState() {
   return {
-    v: 1, id: "p" + uid(), name: "未命名分镜", script: "", shots: [], savedAt: 0,
+    v: 2, id: "p" + uid(), name: "未命名分镜", script: "", shots: [], savedAt: 0,
     settings: { charsPerShot: 24, wps: 4.5, minDur: 1.5, defaultDur: 3 },
     view: "card"
   };
@@ -737,18 +743,20 @@ const shotText = (s, key) => shotField(s, key);
 /* ============================ 图片存储 ============================
    localStorage 只有 5MB 左右，几张照片就爆。这里把图片本体存进 IndexedDB
    （容量通常几百 MB），localStorage 只留文字和结构，彻底解决“存储空间不足”。 */
-const IMG_DB = "fenjingtai-img", IMG_STORE = "images", PROJ_STORE = "projects";
+const IMG_DB = "fenjingtai-img", IMG_STORE = "images", PROJ_STORE = "projects", BACKUP_STORE = "backups";
+const APP_DATA_V = 2;              // 数据格式版本：将来改结构时靠它判断要不要迁移、迁移前先备份
 let imgDB = null;
 const IMG = new Map();                       // imgId → dataURL（内存缓存，渲染时同步取）
 function openImgDB() {
   return new Promise((resolve) => {
     try {
       if (!window.indexedDB) return resolve(null);
-      const req = indexedDB.open(IMG_DB, 2);
+      const req = indexedDB.open(IMG_DB, 3);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(IMG_STORE)) db.createObjectStore(IMG_STORE);
         if (!db.objectStoreNames.contains(PROJ_STORE)) db.createObjectStore(PROJ_STORE);
+        if (!db.objectStoreNames.contains(BACKUP_STORE)) db.createObjectStore(BACKUP_STORE);
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);
@@ -787,6 +795,49 @@ function idbAll() {
   });
 }
 /* ---- 项目库：把每个项目整体存进 IndexedDB，可以随时切回去 ---- */
+function idbRaw(store) {
+  return {
+    put: (id, text) => new Promise((resolve) => {
+      if (!imgDB) return resolve(false);
+      try {
+        const tx = imgDB.transaction(store, "readwrite");
+        tx.objectStore(store).put(text, id);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+        tx.onabort = () => resolve(false);
+      } catch (e) { resolve(false); }
+    }),
+    del: (id) => { if (imgDB) { try { imgDB.transaction(store, "readwrite").objectStore(store).delete(id); } catch (e) {} } },
+    all: () => new Promise((resolve) => {
+      if (!imgDB) return resolve([]);
+      try {
+        const st = imgDB.transaction(store, "readonly").objectStore(store);
+        const ks = st.getAllKeys(), vs = st.getAll();
+        let keys = null, vals = null;
+        const done = () => { if (keys && vals) resolve(keys.map((k, i) => [k, vals[i]])); };
+        ks.onsuccess = () => { keys = ks.result; done(); };
+        vs.onsuccess = () => { vals = vs.result; done(); };
+        st.transaction.onerror = () => resolve([]);
+      } catch (e) { resolve([]); }
+    })
+  };
+}
+const bkStore = () => idbRaw(BACKUP_STORE);
+/* ---- 自动快照：每次打开、切换项目前都留一份，最多保留 6 份 ---- */
+let lastSnapAt = 0;
+async function snapshotNow(label, force) {
+  if (!imgDB) return false;
+  if (!force && Date.now() - lastSnapAt < 30 * 60 * 1000) return false;   // 半小时内不重复备份
+  const text = JSON.stringify(Object.assign(persistPayload(), { _snap: label || "", _at: Date.now() }));
+  const id = "s" + Date.now() + "_" + uid();
+  const ok = await bkStore().put(id, text);
+  if (!ok) return false;
+  lastSnapAt = Date.now();
+  const all = await bkStore().all();
+  const sorted = all.map(([k]) => k).sort().reverse();
+  sorted.slice(6).forEach((k) => bkStore().del(k));
+  return true;
+}
 function idbProjPut(id, text) {
   return new Promise((resolve) => {
     if (!imgDB) return resolve(false);
@@ -832,7 +883,11 @@ async function initImageStore() {
     const all = await idbAll();
     all.forEach(([k, v]) => { if (typeof v === "string") IMG.set(k, v); });
   }
-  /* 老项目里内嵌的图片，搬到 IndexedDB，然后从本地存档里去掉，腾出空间 */
+  const moved = await absorbInlineImages();
+  setSaveState(moved ? "已把 " + moved + " 张图移到本地大容量存储" : "就绪");
+}
+/* 把还内嵌在数据里的图片搬进 IndexedDB，然后从存档里去掉（导入老项目后也要跑一次） */
+async function absorbInlineImages() {
   let moved = 0;
   for (const s of state.shots) {
     for (const r of (Array.isArray(s.images) ? s.images : [])) {
@@ -846,7 +901,7 @@ async function initImageStore() {
     syncLegacyImage(s);
   }
   if (moved) { try { save(true); } catch (e) {} }
-  setSaveState(moved ? "已把 " + moved + " 张图移到本地大容量存储" : "就绪");
+  return moved;
 }
 /* 存档用：不带 data URL（图片在 IndexedDB 里），只保留外链图片 */
 function persistPayload() {
@@ -1588,7 +1643,7 @@ function imageDataFromFile(file) {
   return new Promise((resolve) => {
     if (!file || !/^image\//.test(file.type)) return resolve(null);
     const fr = new FileReader();
-    fr.onload = () => {
+    fr.onload = async () => {
       const img = new Image();
       img.onload = () => {
         const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
@@ -2218,6 +2273,7 @@ async function openProjectDialog() {
   const sel = $("#setImgMax");
   if (sel) sel.value = String(state.settings.imgMax || 1080);
   await renderProjectList();
+  await renderBackupList();
   if (!$("#projDlg").open) $("#projDlg").showModal();
 }
 /* 存储用量 + 长期保存：明确告诉用户占的是本机空间、还能放多少 */
@@ -2251,7 +2307,56 @@ async function renderProjectList() {
     </div>
   </div>`).join("");
 }
+/* 备份列表：程序更新、误删、切换错了都能从这里找回 */
+async function renderBackupList() {
+  const box = $("#backupList"); if (!box) return;
+  const all = (await bkStore().all())
+    .map(([id, text]) => { let d = null; try { d = JSON.parse(text); } catch (e) { return null; }
+      return { id, name: d.name || "未命名分镜", shots: (d.shots || []).length, at: d._at || 0, label: d._snap || "", data: text }; })
+    .filter(Boolean).sort((a, b) => b.at - a.at);
+  if (!all.length) { box.innerHTML = `<p class="hint" style="margin:0">还没有备份。点右边「立即备份一次」，以后每次打开和切换项目前也会自动备份。</p>`; return; }
+  box.innerHTML = all.map((b) => `<div class="proj-row" data-bid="${b.id}">
+    <div class="pthumb" style="width:52px;height:32px">备份</div>
+    <div class="pinfo"><b>${esc(b.name)}</b>
+      <span class="hint">${b.shots} 个镜头 · ${b.at ? new Date(b.at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}${b.label ? " · " + esc(b.label) : ""}</span></div>
+    <div class="pacts"><button class="mini2 primary" data-bact="restore" data-bid="${b.id}">恢复这一份</button></div>
+  </div>`).join("");
+}
+async function restoreBackup(bid) {
+  const all = await bkStore().all();
+  const hit = all.find(([k]) => k === bid);
+  if (!hit) { toast("这份备份找不到了。", null, "warn"); return; }
+  if (!confirm("用这份备份覆盖当前项目？（当前内容也会先备份一份）")) return;
+  await snapshotNow("恢复备份前", true);
+  const d = JSON.parse(hit[1]);
+  state = Object.assign(freshState(), d);
+  state.settings = Object.assign(freshState().settings, d.settings || {});
+  state.shots = (Array.isArray(d.shots) ? d.shots : []).map((s) => Object.assign(newShot(), s));
+  if (!state.id) state.id = "p" + uid();
+  normalizeShots();
+  await absorbInlineImages();
+  renderAll(); save(true);
+  await renderProjectList(); await renderBackupList();
+  toast("已恢复到备份：共 " + state.shots.length + " 个镜头。");
+}
+/* 一键整机备份：把所有项目（含图片）打成一个 JSON，存到平板文件里 */
+async function exportEverything() {
+  const all = (await idbProjAll()).map(projectInfo).filter(Boolean);
+  const out = { type: "fenjingtai-all", at: Date.now(), app: APP_DATA_V, projects: [] };
+  for (const p of all) {
+    let d = null; try { d = JSON.parse(p.data); } catch (e) { continue; }
+    d.shots = (Array.isArray(d.shots) ? d.shots : []).map((s) => Object.assign({}, s, {
+      images: (Array.isArray(s.images) ? s.images : []).map((r) => Object.assign({}, r, {
+        url: r && r.imgId ? (IMG.get(r.imgId) || "") : ((r && r.url) || "")
+      }))
+    }));
+    out.projects.push(d);
+  }
+  download("分镜台-全部项目备份-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(out), "application/json");
+  toast("已导出全部 " + out.projects.length + " 个项目（含图片），存到平板文件里就很安全。");
+}
 async function applyProjectRecord(rec) {
+  await snapshotNow("打开其他项目前");      // 切换前先留一份，切错了也能回来
   let d = null;
   try { d = JSON.parse(rec.data); } catch (e) { toast("这个项目的数据读不出来。", null, "warn"); return; }
   state = Object.assign(freshState(), d);
@@ -2259,6 +2364,7 @@ async function applyProjectRecord(rec) {
   state.shots = (Array.isArray(d.shots) ? d.shots : []).map((s) => Object.assign(newShot(), s));
   state.id = rec.id;
   normalizeShots();
+  await absorbInlineImages();
   renderAll(); save(true);
   setSaveState("已打开「" + (state.name || "未命名分镜") + "」");
   toast("已打开「" + (state.name || "未命名分镜") + "」，共 " + state.shots.length + " 个镜头。");
@@ -2358,6 +2464,18 @@ function bind() {
     save(true);
     toast("以后导入的图片按最长边 " + state.settings.imgMax + "px 存（已有的图不变）。");
   };
+  $("#btnSnapNow").onclick = async () => {
+    const ok = await snapshotNow("手动备份", true);
+    await renderBackupList();
+    toast(ok ? "已备份一份，最多保留最近 6 份。" : "备份失败（可能是浏览器存储不可用）。", null, ok ? null : "warn");
+  };
+  $("#btnExportAll").onclick = () => exportEverything();
+  $("#backupList").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-bact]");
+    if (!b) return;
+    e.preventDefault();
+    if (b.dataset.bact === "restore") restoreBackup(b.dataset.bid);
+  });
   $("#btnProjSaveAs").onclick = async () => {
     const name = prompt("另存为新项目，叫什么名字？", (state.name || "未命名分镜") + " 副本");
     if (name == null) return;
@@ -2391,7 +2509,7 @@ function bind() {
     const f = e.target.files[0]; e.target.value = "";
     if (!f) return;
     const fr = new FileReader();
-    fr.onload = () => {
+    fr.onload = async () => {
       try {
         const d = JSON.parse(fr.result);
         if (Array.isArray(d)) { importAI(fr.result); return; }
@@ -2399,6 +2517,8 @@ function bind() {
         state = Object.assign(freshState(), d);
         state.settings = Object.assign(freshState().settings, d.settings || {});
         state.shots = d.shots.map((s) => Object.assign(newShot(), s));
+        normalizeShots();             // 先规范结构（会重建行对象），再做图片搬运
+        await absorbInlineImages();   // 老项目里内嵌的图片，导入后立刻搬进大容量库
         renderAll(); save();
         toast(`已载入项目「${state.name}」，共 ${state.shots.length} 个镜头。`);
       } catch (err) { toast("载入失败：" + err.message, null, "warn"); }
@@ -2770,6 +2890,10 @@ const DEMO = `1. 老小区楼道 - 夜 内
     await initImageStore();          // 先把本地大容量存储里的图片读进内存
     ensureProjectId();
     saveProjectRecord();             // 当前项目也登记进项目库
+    /* 每次打开自动留一份快照；旧版本号的数据在迁移前也先备份 */
+    const needSnap = !restored || ((state.v || 1) < APP_DATA_V);
+    if (needSnap) await snapshotNow("打开时自动备份", true);
+    state.v = APP_DATA_V;
     try { renderAll(); }
     catch (e) {
       console.error(e);
