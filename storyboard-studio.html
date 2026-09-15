@@ -199,6 +199,15 @@
   .lb-bot{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
   .thumb-sm{width:152px;max-width:152px;max-height:300px;margin:0;cursor:zoom-in}
   .thumb{cursor:zoom-in}
+  /* 行内字段：画面内容 / 台词 / 音效 变高，和这一行的图片齐平 */
+  .shot-row{align-items:stretch}
+  .rowfields{height:100%}
+  .rowfields textarea.grow{flex:1 1 auto;min-height:76px;resize:vertical}
+  .extras{display:flex;flex-direction:column;gap:6px}
+  .extra-row{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:6px;align-items:center}
+  .extra-row input{padding:5px 7px}
+  .addrow.small{font-size:11px;padding:4px 8px}
+  .tbl textarea.grow{min-height:110px}
   .thumb-sm .thumb-empty{font-size:11px;gap:0;line-height:1.5}
   .thumb-sm .thumb-empty small{display:none}
 
@@ -474,6 +483,11 @@
 <input type="file" id="imgPickMany" accept="image/*" multiple hidden>
 <input type="file" id="videoPick" accept="video/*" hidden>
 
+<datalist id="transList"></datalist>
+<datalist id="sizeList"></datalist>
+<datalist id="angleList"></datalist>
+<datalist id="moveList"></datalist>
+
 <dialog id="imgDlg">
   <div class="lb">
     <div class="lb-top">
@@ -594,7 +608,7 @@ const startAt = (i) => state.shots.slice(0, i).reduce((a, s) => a + (+s.duration
 const totalDur = () => state.shots.reduce((a, s) => a + (+s.duration || 0), 0);
 const sizeClass = (sz) => FAR.has(sz) ? "s-far" : CLOSE.has(sz) ? "s-close" : "s-mid";
 /* ---------- 一个镜号内的多行画面 ---------- */
-const MAX_ROWS = 3;
+const MAX_ROWS = 10;
 const ROW_LABELS = ["起幅", "中段", "落幅"];
 const rowLabel = (k) => ROW_LABELS[k] || "画面" + (k + 1);
 /* 镜头里的画面行数组（老数据只有单张图，这里自动升级成一行） */
@@ -606,7 +620,7 @@ function shotImages(s) {
   }
   return s.images;
 }
-const rowHasImg = (r) => !!(r && r.url);
+const rowHasImg = (r) => !!rowSrc(r);
 /* 镜头级字段 = 第一行的快照（导出、画面墙、时间轴继续读这些字段） */
 function rowFromShot(s) {
   return {
@@ -614,7 +628,7 @@ function rowFromShot(s) {
     picture: s.picture || "", dialogue: s.dialogue || "",
     size: s.size || "中景", angle: s.angle || "平视", move: s.move || "固定",
     transition: s.transition || "切", duration: +s.duration || 0,
-    sfx: s.sfx || "", note: s.note || ""
+    sfx: s.sfx || "", note: s.note || "", extra: []
   };
 }
 /* 新加的一行：景别/机位等沿用上一行（同一镜号通常一致），文字和时长留空 */
@@ -623,25 +637,33 @@ function blankRow(prev) {
     url: "", w: null, h: null, picture: "", dialogue: "",
     size: prev ? prev.size : "中景", angle: prev ? prev.angle : "平视",
     move: prev ? prev.move : "固定", transition: prev ? prev.transition : "切",
-    duration: 0, sfx: "", note: ""
+    duration: 0, sfx: "", note: "", extra: []
   };
+}
+/* 备注 + 自定义字段，合起来给导出 / 打印（多行时带行名） */
+function shotNote(s) {
+  const rows = shotImages(s);
+  const vals = rows.map((r) => noteWithExtras(r || {}));
+  if (rows.length <= 1) return vals[0] || "";
+  return vals.map((v, k) => (v ? rowLabel(k) + "：" + v : "")).filter(Boolean).join(" ／ ");
 }
 /* 把各行的值回填到镜头级字段；镜号时长 = 各行时长之和 */
 function syncLegacyImage(s) {
   const rows = shotImages(s);
   if (!rows.length) return;
   const first = rows.find(rowHasImg) || null;
-  s.image = first ? first.url : "";
+  const r0 = (rows[0] && typeof rows[0] === "object") ? rows[0] : {};
+  s.image = first ? rowSrc(first) : "";
   s.imgW = first ? first.w : null;
   s.imgH = first ? first.h : null;
-  s.picture = rows[0].picture || "";
-  s.dialogue = rows[0].dialogue || "";
-  s.size = rows[0].size || "中景";
-  s.angle = rows[0].angle || "平视";
-  s.move = rows[0].move || "固定";
-  s.transition = rows[0].transition || "切";
-  s.sfx = rows[0].sfx || "";
-  s.note = rows[0].note || "";
+  s.picture = r0.picture || "";
+  s.dialogue = r0.dialogue || "";
+  s.size = r0.size || "中景";
+  s.angle = r0.angle || "平视";
+  s.move = r0.move || "固定";
+  s.transition = r0.transition || "切";
+  s.sfx = r0.sfx || "";
+  s.note = r0.note || "";
   s.duration = rows.reduce((a, r) => a + (+(r && r.duration) || 0), 0);
 }
 /* 多行字段合成一条，导出 / 打印用：起幅：… ／ 中段：… */
@@ -652,6 +674,102 @@ function shotField(s, key) {
   return vals.map((v, k) => (v ? rowLabel(k) + "：" + v : "")).filter(Boolean).join("  ／  ");
 }
 const shotText = (s, key) => shotField(s, key);
+
+/* ============================ 图片存储 ============================
+   localStorage 只有 5MB 左右，几张照片就爆。这里把图片本体存进 IndexedDB
+   （容量通常几百 MB），localStorage 只留文字和结构，彻底解决“存储空间不足”。 */
+const IMG_DB = "fenjingtai-img", IMG_STORE = "images";
+let imgDB = null;
+const IMG = new Map();                       // imgId → dataURL（内存缓存，渲染时同步取）
+function openImgDB() {
+  return new Promise((resolve) => {
+    try {
+      if (!window.indexedDB) return resolve(null);
+      const req = indexedDB.open(IMG_DB, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IMG_STORE)) db.createObjectStore(IMG_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    } catch (e) { resolve(null); }
+  });
+}
+function idbPut(id, dataUrl) {
+  return new Promise((resolve) => {
+    if (!imgDB) return resolve(false);
+    try {
+      const tx = imgDB.transaction(IMG_STORE, "readwrite");
+      tx.objectStore(IMG_STORE).put(dataUrl, id);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+      tx.onabort = () => resolve(false);
+    } catch (e) { resolve(false); }
+  });
+}
+function idbDelete(id) {
+  if (!imgDB) return;
+  try { imgDB.transaction(IMG_STORE, "readwrite").objectStore(IMG_STORE).delete(id); } catch (e) {}
+}
+function idbAll() {
+  return new Promise((resolve) => {
+    if (!imgDB) return resolve([]);
+    try {
+      const store = imgDB.transaction(IMG_STORE, "readonly").objectStore(IMG_STORE);
+      const ks = store.getAllKeys(), vs = store.getAll();
+      let keys = null, vals = null;
+      const done = () => { if (keys && vals) resolve(keys.map((k, i) => [k, vals[i]])); };
+      ks.onsuccess = () => { keys = ks.result; done(); };
+      vs.onsuccess = () => { vals = vs.result; done(); };
+      store.transaction.onerror = () => resolve([]);
+    } catch (e) { resolve([]); }
+  });
+}
+/* 把一张图存进 IndexedDB，返回 imgId（同步返回，落盘异步） */
+function putImage(dataUrl) {
+  const id = "i" + uid();
+  IMG.set(id, dataUrl);
+  if (imgDB) idbPut(id, dataUrl);
+  return id;
+}
+const rowSrc = (r) => (r ? (r.imgId ? (IMG.get(r.imgId) || "") : (r.url || "")) : "");
+async function initImageStore() {
+  normalizeShots();              // 先把历史数据的异常结构修好，再动图片
+  imgDB = await openImgDB();
+  if (imgDB) {
+    const all = await idbAll();
+    all.forEach(([k, v]) => { if (typeof v === "string") IMG.set(k, v); });
+  }
+  /* 老项目里内嵌的图片，搬到 IndexedDB，然后从本地存档里去掉，腾出空间 */
+  let moved = 0;
+  for (const s of state.shots) {
+    for (const r of (Array.isArray(s.images) ? s.images : [])) {
+      if (!r || typeof r !== "object") continue;
+      const inline = (r.url && r.url.indexOf("data:") === 0) ? r.url : "";
+      if (!inline) continue;
+      if (!imgDB) break;
+      const id = r.imgId || ("i" + uid());
+      if (await idbPut(id, inline)) { IMG.set(id, inline); r.imgId = id; r.url = ""; moved++; }
+    }
+    syncLegacyImage(s);
+  }
+  if (moved) { try { save(true); } catch (e) {} }
+  setSaveState(moved ? "已把 " + moved + " 张图移到本地大容量存储" : "就绪");
+}
+/* 存档用：不带 data URL（图片在 IndexedDB 里），只保留外链图片 */
+function persistPayload() {
+  return {
+    v: state.v, name: state.name, script: state.script, video: state.video, view: state.view,
+    settings: state.settings,
+    shots: state.shots.map((s) => Object.assign({}, s, {
+      image: (s.image && s.image.indexOf("data:") !== 0) ? s.image : "",
+      images: (Array.isArray(s.images) ? s.images : []).map((r) => Object.assign({}, r, {
+        url: (r.url && r.url.indexOf("data:") !== 0) ? r.url : ""
+      }))
+    }))
+  };
+}
 /* 数据体检：把历史版本留下的异常结构修好（比如把空行存成 null、行里缺字段、选项值非法）。
    旧版本曾经用 null 表示"还没放图的空行"，新代码按对象读，必须先规范化。 */
 function normalizeShots() {
@@ -673,7 +791,8 @@ function normalizeShots() {
       if (!SIZES.includes(merged.size)) merged.size = base.size;
       if (!ANGLES.includes(merged.angle)) merged.angle = base.angle;
       if (!MOVES.includes(merged.move)) merged.move = base.move;
-      if (!TRANS.includes(merged.transition)) merged.transition = base.transition;
+      if (!merged.transition) merged.transition = base.transition;   // 转场允许自定义
+      if (!Array.isArray(merged.extra)) merged.extra = [];
       merged.duration = Math.max(0, +merged.duration || 0);
       merged.url = merged.url || "";
       merged.picture = merged.picture || "";
@@ -701,6 +820,29 @@ function stackAspect(s) {
   return Math.max(0.22, 1 / inv);
 }
 /* ---------- 多行画面的 HTML ---------- */
+/* 自定义字段：一行画面可以在「备注」后面加任意多个「标题 + 内容」 */
+function extrasHTML(s, k, im) {
+  const list = Array.isArray(im.extra) ? im.extra : [];
+  return `<div class="extras">
+    ${list.map((x, j) => `<div class="extra-row">
+      <input data-id="${s.id}" data-field="extraLabel" data-slot="${k}" data-idx="${j}" value="${esc(x.label || "")}" placeholder="标题">
+      <input data-id="${s.id}" data-field="extraValue" data-slot="${k}" data-idx="${j}" value="${esc(x.value || "")}" placeholder="内容">
+      <button class="mini" data-act="delextra" data-id="${s.id}" data-slot="${k}" data-idx="${j}" title="删掉这个字段">✕</button>
+    </div>`).join("")}
+    <button class="addrow small" data-act="addextra" data-id="${s.id}" data-slot="${k}">＋ 加一个自定义字段（标题 + 内容）</button>
+  </div>`;
+}
+/* 备注 + 自定义字段，合成一段文字给导出 / 打印用 */
+function noteWithExtras(r) {
+  const parts = [];
+  if (r.note) parts.push(String(r.note).trim());
+  (Array.isArray(r.extra) ? r.extra : []).forEach((x) => {
+    if ((x.label && String(x.label).trim()) || (x.value && String(x.value).trim())) {
+      parts.push((x.label || "").trim() + "：" + (x.value || "").trim());
+    }
+  });
+  return parts.join(" ｜ ");
+}
 function imgStackHTML(s, i) {
   const ims = shotImages(s);
   const slots = ims.length ? ims : [rowFromShot(s)];
@@ -709,28 +851,29 @@ function imgStackHTML(s, i) {
       <span class="slotlabel">${rowLabel(k)}</span>
       <button type="button" class="thumb" data-id="${s.id}" data-slot="${k}" data-act="lb"
         style="aspect-ratio:${imgAspect(im).toFixed(4)}" title="点开看大图；也可 Ctrl+V 粘贴 / 拖入图片">
-        ${rowHasImg(im) ? `<img src="${im.url}" alt="镜头 ${i + 1} ${rowLabel(k)}">`
+        ${rowHasImg(im) ? `<img src="${rowSrc(im)}" alt="镜头 ${i + 1} ${rowLabel(k)}">`
           : `<span class="thumb-empty"><span>＋ 画面</span><small>点击后 Ctrl+V</small><small>或拖入图片</small></span>`}
       </button>
       </span>
       <div class="rowfields">
         <label class="fld"><span>${rowLabel(k)} · 画面内容</span>
-          <textarea rows="2" data-id="${s.id}" data-field="row" data-key="picture" data-slot="${k}" placeholder="这一行画面里看到什么">${esc(im.picture || "")}</textarea>
+          <textarea class="grow" data-id="${s.id}" data-field="row" data-key="picture" data-slot="${k}" placeholder="这一行画面里看到什么">${esc(im.picture || "")}</textarea>
         </label>
         <label class="fld"><span>${rowLabel(k)} · 台词 / 旁白</span>
-          <textarea rows="2" data-id="${s.id}" data-field="row" data-key="dialogue" data-slot="${k}" placeholder="这一行对应的台词，没有就留空">${esc(im.dialogue || "")}</textarea>
+          <textarea class="grow" data-id="${s.id}" data-field="row" data-key="dialogue" data-slot="${k}" placeholder="这一行对应的台词，没有就留空">${esc(im.dialogue || "")}</textarea>
+        </label>
+        <label class="fld"><span>音效 / BGM</span>
+          <textarea class="grow" data-id="${s.id}" data-field="row" data-key="sfx" data-slot="${k}" placeholder="环境声、音乐、拟音…">${esc(im.sfx || "")}</textarea>
         </label>
         <div class="grid-fields">
           <label class="fld"><span>景别</span><select data-id="${s.id}" data-field="row" data-key="size" data-slot="${k}">${opts(SIZES, im.size)}</select></label>
           <label class="fld"><span>机位角度</span><select data-id="${s.id}" data-field="row" data-key="angle" data-slot="${k}">${opts(ANGLES, im.angle)}</select></label>
           <label class="fld"><span>运镜</span><select data-id="${s.id}" data-field="row" data-key="move" data-slot="${k}">${opts(MOVES, im.move)}</select></label>
-          <label class="fld"><span>转场</span><select data-id="${s.id}" data-field="row" data-key="transition" data-slot="${k}">${opts(TRANS, im.transition)}</select></label>
+          <label class="fld"><span>转场（可自定义输入）</span><input list="transList" data-id="${s.id}" data-field="row" data-key="transition" data-slot="${k}" value="${esc(im.transition || "切")}" placeholder="选一个或直接输入"></label>
           <label class="fld"><span>时长（秒）</span><input type="number" min="0" step="0.5" data-id="${s.id}" data-field="row" data-key="duration" data-slot="${k}" value="${+(im.duration || 0)}"></label>
         </div>
-        <div class="grid-fields">
-          <label class="fld"><span>音效 / BGM</span><input data-id="${s.id}" data-field="row" data-key="sfx" data-slot="${k}" value="${esc(im.sfx || "")}" placeholder="环境声、音乐"></label>
-          <label class="fld"><span>备注</span><input data-id="${s.id}" data-field="row" data-key="note" data-slot="${k}" value="${esc(im.note || "")}" placeholder="道具、服化、参考片"></label>
-        </div>
+        <label class="fld"><span>备注</span><input data-id="${s.id}" data-field="row" data-key="note" data-slot="${k}" value="${esc(im.note || "")}" placeholder="道具、服化、参考片"></label>
+        ${extrasHTML(s, k, im)}
       </div>
     </div>`).join("")}</div>`;
 }
@@ -744,17 +887,17 @@ function rowToolsHTML(s) {
 function wallImagesHTML(s, i) {
   const ims = shotImages(s).filter(rowHasImg);
   if (!ims.length) return `<span class="gempty">＋ 画面</span>`;
-  return ims.map((im) => `<img src="${im.url}" style="aspect-ratio:${imgAspect(im).toFixed(4)}" alt="镜头 ${i + 1}">`).join("");
+  return ims.map((im) => `<img src="${rowSrc(im)}" style="aspect-ratio:${imgAspect(im).toFixed(4)}" alt="镜头 ${i + 1}">`).join("");
 }
 
 /* ============================ 持久化 ============================ */
 function save(silent) {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    localStorage.setItem(LS_KEY, JSON.stringify(persistPayload()));
     if (!silent) setSaveState("已保存 · " + new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
   } catch (e) {
     setSaveState("自动保存失败");
-    toast("本地存储空间不足（画面图较多）。请用「导出项目」保存 JSON 备份。", null, "warn");
+    toast("本地存档写不进去了（文字数据过大）。图片已经存在大容量库里，建议用「导出项目」备份一次，并删掉一些不再需要的镜头。", null, "warn");
   }
 }
 function scheduleSave() {
@@ -782,6 +925,7 @@ function opts(list, cur) {
 }
 function renderAll() {
   normalizeShots();
+  fillDatalists();
   $("#projName").value = state.name;
   $("#script").value = state.script;
   $("#setChars").value = state.settings.charsPerShot;
@@ -790,6 +934,15 @@ function renderAll() {
   $("#setDef").value = state.settings.defaultDur;
   document.querySelectorAll("#viewCtl button").forEach((b) => b.classList.toggle("on", b.dataset.view === state.view));
   renderShots(); renderTimeline(); updateStats();
+}
+/* 下拉候选：转场可以自己输入，其它几个也给上候选项 */
+function fillDatalists() {
+  const put = (id, arr) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = arr.map((v) => `<option value="${esc(v)}"></option>`).join("");
+  };
+  put("transList", TRANS.concat(["闪白", "闪黑", "推入", "拉出", "无缝转场"]));
+  put("sizeList", SIZES); put("angleList", ANGLES); put("moveList", MOVES);
 }
 function renderShots() {
   const box = $("#shots"), wrap = $("#tableWrap");
@@ -914,7 +1067,7 @@ function tableHTML() {
               <span class="slotlabel">${rowLabel(k)}</span>
               <button type="button" class="thumb thumb-tbl" data-id="${s.id}" data-slot="${k}" data-act="lb"
                 style="aspect-ratio:${imgAspect(r).toFixed(4)}" title="点开看大图；也可 Ctrl+V 粘贴 / 拖入图片">
-                ${rowHasImg(r) ? `<img src="${r.url}" alt="镜头 ${i + 1} ${rowLabel(k)}">` : `<span class="thumb-empty"><span>＋ 画面</span></span>`}
+                ${rowHasImg(r) ? `<img src="${rowSrc(r)}" alt="镜头 ${i + 1} ${rowLabel(k)}">` : `<span class="thumb-empty"><span>＋ 画面</span></span>`}
               </button>
             </span>
             <div class="row">
@@ -931,9 +1084,9 @@ function tableHTML() {
         <td>${box("move", "select")}</td>
         <td>${box("duration", "num")}</td>
         <td>${box("dialogue")}</td>
-        <td>${box("sfx", "input")}</td>
-        <td>${box("transition", "select")}</td>
-        <td>${box("note", "input")}</td>
+        <td>${box("sfx")}</td>
+        <td><input list="transList" data-id="${s.id}" data-field="row" data-key="transition" data-slot="${k}" value="${esc(r.transition || "切")}" placeholder="可选可输入"></td>
+        <td>${box("note", "input")}${extrasHTML(s, k, r)}</td>
         ${first ? `<td rowspan="${span}"><div class="tbl-acts">
           ${state.video ? `<button class="mini2" data-act="play" data-id="${s.id}">▶</button>` : ""}
           <button class="mini2" data-act="up" data-id="${s.id}">↑</button>
@@ -1180,10 +1333,13 @@ function setShotImage(id, slot, dataUrl, w, h) {
   if (!dataUrl) {
     ims.splice(k, 1);
   } else {
-    ims[k].url = dataUrl; ims[k].w = w || null; ims[k].h = h || null;
+    if (ims[k].imgId) idbDelete(ims[k].imgId);
+    const newId = putImage(dataUrl);
+    ims[k].imgId = newId;
+    ims[k].w = w || null; ims[k].h = h || null; ims[k].url = "";
     if (!w || !h) {
       probeImageSize(dataUrl).then((d) => {
-        if (d && ims[k] && ims[k].url === dataUrl) {
+        if (d && ims[k] && ims[k].imgId === newId) {
           ims[k].w = d.w; ims[k].h = d.h;
           syncLegacyImage(s); renderShots(); save(true);
           if ($("#imgDlg").open) paintLightbox();
@@ -1215,8 +1371,8 @@ function paintLightbox() {
   $("#lbTitle").textContent = `镜 ${String(lbIndex + 1).padStart(2, "0")} · ${s.scene || "未填场次"} · ${durStr(s.duration)}s`
     + (ims.length ? " · " + rowLabel(lbSlot) : "");
   $("#lbPos").textContent = `${lbIndex + 1} / ${state.shots.length}` + (ims.length > 1 ? ` · 第 ${lbSlot + 1}/${ims.length} 行` : "");
-  $("#lbImg").innerHTML = im && im.url
-    ? `<img src="${im.url}" alt="镜头 ${lbIndex + 1} ${rowLabel(lbSlot)}">`
+  $("#lbImg").innerHTML = rowHasImg(im)
+    ? `<img src="${rowSrc(im)}" alt="镜头 ${lbIndex + 1} ${rowLabel(lbSlot)}">`
     : `<div class="lb-empty">这一行还没有画面<br><small>点右下「上传图片」，或直接 Ctrl+V 粘贴</small></div>`;
   $("#lbPrev").disabled = lbIndex <= 0;
   $("#lbNext").disabled = lbIndex >= state.shots.length - 1;
@@ -1298,8 +1454,9 @@ async function importImages(files) {
     if (!r) continue;
     if (!state.shots[i]) { state.shots.push(newShot()); added++; }
     const ims = shotImages(state.shots[i]);
-    if (!ims.length) ims.push(Object.assign(rowFromShot(state.shots[i]), { url: r.url, w: r.w, h: r.h }));
-    else Object.assign(ims[0], { url: r.url, w: r.w, h: r.h });
+    const imId = putImage(r.url);
+    if (!ims.length) ims.push(Object.assign(rowFromShot(state.shots[i]), { imgId: imId, w: r.w, h: r.h, url: "" }));
+    else Object.assign(ims[0], { imgId: imId, w: r.w, h: r.h, url: "" });
     syncLegacyImage(state.shots[i]);
     if (!r.land) portrait++;
     done++;
@@ -1323,7 +1480,7 @@ function rows() {
     const t0 = startAt(i);
     return [i + 1, s.scene,
       shotField(s, "size"), shotField(s, "angle"), shotField(s, "move"), durStr(s.duration), mmss(t0),
-      shotField(s, "picture"), shotField(s, "dialogue"), shotField(s, "sfx"), shotField(s, "transition"), shotField(s, "note")];
+      shotField(s, "picture"), shotField(s, "dialogue"), shotField(s, "sfx"), shotField(s, "transition"), shotNote(s)];
   });
 }
 const durStr = (d) => String(Math.round((+d || 0) * 10) / 10);
@@ -1341,7 +1498,7 @@ function exportMd() {
   const cell = (v) => String(v == null ? "" : v).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
   const body = state.shots.map((s, i) => [i + 1, s.scene,
     shotField(s, "size"), shotField(s, "angle"), shotField(s, "move"), durStr(s.duration) + "s",
-    shotField(s, "picture"), shotField(s, "dialogue"), shotField(s, "sfx"), shotField(s, "transition"), shotField(s, "note")].map(cell));
+    shotField(s, "picture"), shotField(s, "dialogue"), shotField(s, "sfx"), shotField(s, "transition"), shotNote(s)].map(cell));
   const md = [`# ${state.name} · 分镜表`, ``,
     `- 镜头数：${state.shots.length}　总时长：${mmss(totalDur())}　生成日期：${new Date().toLocaleDateString("zh-CN")}`, ``,
     `| ${head.join(" | ")} |`, `|${head.map(() => "---").join("|")}|`,
@@ -1350,17 +1507,17 @@ function exportMd() {
   toast("已导出 Markdown。");
 }
 function buildPrint() {
-  const hasImg = state.shots.some((s) => shotImages(s).some((x) => x && x.url));
+  const hasImg = state.shots.some((s) => shotImages(s).some(rowHasImg));
   const body = state.shots.map((s, i) => `<tr>
     <td class="p-no">${i + 1}</td>
-    ${hasImg ? `<td class="p-img"><div class="p-imgs">${shotImages(s).filter(rowHasImg).map((im) => `<img src="${im.url}" alt="">`).join("")}</div></td>` : ""}
+    ${hasImg ? `<td class="p-img"><div class="p-imgs">${shotImages(s).filter(rowHasImg).map((im) => `<img src="${rowSrc(im)}" alt="">`).join("")}</div></td>` : ""}
     <td>
       ${(shotImages(s).length ? shotImages(s) : []).map((r, k) => `<div class="p-row">
         <b>${rowLabel(k)}</b> ${esc(r.size || "")} · ${esc(r.angle || "")} · ${esc(r.move || "")} · ${durStr(r.duration)}s · ${esc(r.transition || "")}
         ${r.picture ? `<div>${nl2br(r.picture)}</div>` : ""}
         ${r.dialogue ? `<div class="p-dlg">${nl2br(r.dialogue)}</div>` : ""}
         ${r.sfx ? `<div class="p-sfx">音效/BGM：${esc(r.sfx)}</div>` : ""}
-        ${r.note ? `<div class="p-sfx">备注：${esc(r.note)}</div>` : ""}
+        ${noteWithExtras(r) ? `<div class="p-sfx">备注：${esc(noteWithExtras(r))}</div>` : ""}
       </div>`).join("")}
     </td></tr>`).join("");
   $("#printRoot").innerHTML = `<h1>${esc(state.name)} · 分镜表</h1>
@@ -1820,13 +1977,19 @@ async function runVideoScan() {
 }
 function applyVideoShots(segs, thumbs) {
   const mode = $("#scanMode").value;
-  const shots = segs.map((g, i) => newShot({
-    duration: Math.max(0.2, Math.round((g.end - g.start) * 100) / 100),
-    videoStart: Math.round(g.start * 100) / 100,
-    image: (thumbs[i] && thumbs[i].url) || "",
-    imgW: thumbs[i] && thumbs[i].w,
-    imgH: thumbs[i] && thumbs[i].h
-  }));
+  const shots = segs.map((g, i) => {
+    const s = newShot({
+      duration: Math.max(0.2, Math.round((g.end - g.start) * 100) / 100),
+      videoStart: Math.round(g.start * 100) / 100
+    });
+    const t = thumbs[i];
+    if (t && t.url) {
+      const id = putImage(t.url);
+      s.images = [Object.assign(rowFromShot(s), { imgId: id, w: t.w, h: t.h, url: "" })];
+      syncLegacyImage(s);
+    }
+    return s;
+  });
   state.shots = mode === "append" ? state.shots.concat(shots) : shots;
   state.video = { name: currentVideo.name, duration: currentVideo.duration, scannedAt: Date.now() };
   if (state.name === "未命名分镜" || !state.name) state.name = currentVideo.name.replace(/\.[^.]+$/, "");
@@ -1887,8 +2050,14 @@ function bind() {
     state = freshState(); renderAll(); save(); toast("已新建空项目。");
   };
   $("#btnSaveJson").onclick = () => {
-    download(safeName() + ".json", JSON.stringify(state, null, 2), "application/json");
-    toast("项目已导出为 JSON。");
+    /* 导出的 JSON 必须自带图片，方便换设备恢复 */
+    const payload = persistPayload();
+    payload.shots = state.shots.map((s) => Object.assign({}, s, {
+      image: s.image || "",
+      images: (Array.isArray(s.images) ? s.images : []).map((r) => Object.assign({}, r, { url: rowSrc(r) }))
+    }));
+    download(safeName() + ".json", JSON.stringify(payload, null, 2), "application/json");
+    toast("项目已导出为 JSON（含全部图片，可换设备恢复）。");
   };
   $("#btnImportJson").onclick = () => { $("#filePick").dataset.mode = "project"; $("#filePick").click(); };
   $("#filePick").addEventListener("change", (e) => {
@@ -1974,6 +2143,21 @@ function bind() {
           const ims = shotImages(s);
           if (ims.length) { ims.pop(); syncLegacyImage(s); renderShots(); save(); }
         }
+        else if (b.dataset.act === "addextra") {
+          const s = shotById(id); if (!s) return;
+          const rows = shotImages(s);
+          const k = +(b.dataset.slot || 0);
+          while (rows.length <= k) rows.push(rows.length ? blankRow(rows[rows.length - 1]) : rowFromShot(s));
+          if (!Array.isArray(rows[k].extra)) rows[k].extra = [];
+          rows[k].extra.push({ label: "", value: "" });
+          renderShots(); save();
+        }
+        else if (b.dataset.act === "delextra") {
+          const s = shotById(id); if (!s) return;
+          const rows = shotImages(s);
+          const row = rows[+(b.dataset.slot || 0)];
+          if (row && Array.isArray(row.extra)) { row.extra.splice(+(b.dataset.idx || 0), 1); renderShots(); save(); }
+        }
         else if (b.dataset.act === "gotab") {
           if ((b.dataset.goto || "script") === "script") openScriptPanel(); else setTab(b.dataset.goto);
         }
@@ -2025,6 +2209,17 @@ function bind() {
       else rows[k][key] = el.value;
       syncLegacyImage(s);
       updateDerived(); scheduleSave();
+      return;
+    }
+    if (f === "extraLabel" || f === "extraValue") {
+      const rows = shotImages(s);
+      const k = +(el.dataset.slot || 0), j = +(el.dataset.idx || 0);
+      while (rows.length <= k) rows.push(rows.length ? blankRow(rows[rows.length - 1]) : rowFromShot(s));
+      const row = rows[k];
+      if (!Array.isArray(row.extra)) row.extra = [];
+      while (row.extra.length <= j) row.extra.push({ label: "", value: "" });
+      row.extra[j][f === "extraLabel" ? "label" : "value"] = el.value;
+      scheduleSave();
       return;
     }
     if (f === "duration") s.duration = half(clamp(parseFloat(el.value) || 0, 0.5, 120));
@@ -2181,24 +2376,28 @@ const DEMO = `1. 老小区楼道 - 夜 内
 她下楼，楼道灯一次亮起。`;
 
 (function init() {
-  const restored = load();
-  bind();
-  try { renderAll(); }
-  catch (e) {
-    console.error(e);
-    showFatal(e);
-    return;
-  }
-  setSaveState(restored ? "已恢复上次编辑" : "就绪");
-  if (!restored) { state.script = DEMO; renderAll(); }
-  setTab(state.shots.length ? "shots" : "script");
-  showVideoBar();
-  backfillAspects();   // 老项目里的图片补测横竖版
-  /* 用网址打开时注册离线缓存：加到主屏后没网也能用（file:// 打开时会自动跳过） */
-  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
-  }
+  (async function boot() {
+    const restored = load();
+    bind();
+    await initImageStore();          // 先把本地大容量存储里的图片读进内存
+    try { renderAll(); }
+    catch (e) {
+      console.error(e);
+      showFatal(e);
+      return;
+    }
+    setSaveState(restored ? "已恢复上次编辑" : "就绪");
+    if (!restored) { state.script = DEMO; renderAll(); }
+    setTab(state.shots.length ? "shots" : "script");
+    showVideoBar();
+    backfillAspects();   // 老项目里的图片补测横竖版
+    /* 用网址打开时注册离线缓存：加到主屏后没网也能用（file:// 打开时会自动跳过） */
+    if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
+    }
+  })();
 })();
 </script>
 </body>
 </html>
+
