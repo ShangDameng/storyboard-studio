@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title 分镜台 - 第一次推送到 GitHub
+title 拉片工坊 - 第一次推送到 GitHub
 
 rem 这个文件夹的 git 仓库可能是别的账号创建的，Git 会因此拒绝操作；按官方建议加个白名单
 git config --global --get-all safe.directory 2>nul | findstr /i /c:"%CD%" >nul 2>nul || git config --global --add safe.directory "%CD%" >nul 2>nul
@@ -13,7 +13,7 @@ set GH_REPO=storyboard-studio
 set REPO_URL=https://github.com/%GH_USER%/%GH_REPO%.git
 set PAGES_URL=https://%GH_USER%.github.io/%GH_REPO%/
 set LOG=推送日志.txt
-echo 分镜台 推送日志 %date% %time% > "%LOG%"
+echo 拉片工坊 推送日志 %date% %time% > "%LOG%"
 
 echo ==========================================
 echo    第一次推送（只做一次）
@@ -49,7 +49,7 @@ echo   OK，仓库可以访问。
 echo.
 echo 第 3 步：提交并推送...
 git add -A
-git commit -m "分镜台 静态站点" >> "%LOG%" 2>&1
+git commit -m "拉片工坊 静态站点" >> "%LOG%" 2>&1
 git remote remove origin >nul 2>nul
 git remote add origin "%REPO_URL%"
 git push -u origin main >> "%LOG%" 2>&1

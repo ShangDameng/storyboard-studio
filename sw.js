@@ -1,4 +1,4 @@
-/* 分镜台 Service Worker：联网时优先拿最新版，断网时用缓存兜底 —— 装到主屏后没网也能用 */
+/* 拉片工坊 Service Worker：联网时优先拿最新版，断网时用缓存兜底 —— 装到主屏后没网也能用 */
 const CACHE = "fenjingtai-v1";
 const SHELL = ["./", "./storyboard-studio.html", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png"];
 

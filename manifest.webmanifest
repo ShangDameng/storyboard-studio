@@ -1,6 +1,6 @@
 {
-  "name": "分镜台 · Storyboard Studio",
-  "short_name": "分镜台",
+  "name": "拉片工坊 · Storyboard Studio",
+  "short_name": "拉片工坊",
   "description": "本地优先的视频分镜工具：粘剧本/导入视频自动拆镜头，逐行配画面与字段，导出分镜表。",
   "lang": "zh-CN",
   "start_url": "./storyboard-studio.html",

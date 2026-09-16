@@ -1,12 +1,12 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-title 分镜台 - 推送诊断
+title 拉片工坊 - 推送诊断
 set OUT=诊断结果.txt
 
 git config --global --get-all safe.directory 2>nul | findstr /i /c:"%CD%" >nul 2>nul || git config --global --add safe.directory "%CD%" >nul 2>nul
 
-echo 分镜台 推送诊断 %date% %time% > "%OUT%"
+echo 拉片工坊 推送诊断 %date% %time% > "%OUT%"
 echo. >> "%OUT%"
 
 echo ==========================================

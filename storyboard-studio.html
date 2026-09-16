@@ -7,12 +7,12 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="分镜台">
+<meta name="apple-mobile-web-app-title" content="拉片工坊">
 <meta name="format-detection" content="telephone=no">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="./icon-192.png">
-<title>分镜工坊 · Storyboard Studio</title>
+<title>拉片工坊 · Storyboard Studio</title>
 <style>
   :root{
     /* 浅色主题：白底黑字，淡灰衬托层次，蓝色作强调 */
@@ -423,7 +423,7 @@
 <body>
 
 <header class="topbar">
-  <div class="logo">分镜<b>工坊</b></div>
+  <div class="logo">拉片<b>工坊</b></div>
   <input id="projName" value="未命名分镜" aria-label="项目名称">
   <div class="sp"></div>
   <span class="save-state" id="saveState">就绪</span>
@@ -621,7 +621,7 @@
 <script>
 "use strict";
 /* ============================================================
-   分镜工坊 · 单文件本地分镜工具
+   拉片工坊 · 单文件本地分镜工具
    数据模型 → 渲染 → 交互 → 导出，全部离线运行
    ============================================================ */
 
@@ -992,7 +992,7 @@ function stackAspect(s) {
    拖动表头即可换列位置，列里的内容跟着列走。 */
 const BUILTIN_COLS = [
   { id: "no",         label: "镜号",        type: "no" },
-  { id: "scene",      label: "场次",        type: "scene" },
+  { id: "scene",      label: "场景名",      type: "scene" },
   { id: "img",        label: "画面",        type: "img" },
   { id: "picture",    label: "画面内容",    type: "text",   key: "picture" },
   { id: "size",       label: "景别",        type: "select", key: "size", list: "SIZES" },
@@ -1011,6 +1011,12 @@ function ensureCols() {
     const have = new Set(state.cols.map((c) => c.id));
     BUILTIN_COLS.forEach((c) => { if (!have.has(c.id)) state.cols.push(Object.assign({}, c)); });
     state.cols = state.cols.filter((c) => c.custom || BUILTIN_COLS.some((b) => b.id === c.id));
+    /* 内置列的标题以程序里的定义为准（改文案后老项目也能跟着更新），自定义列保留用户的标题 */
+    state.cols.forEach((c) => {
+      if (c.custom) return;
+      const b = BUILTIN_COLS.find((x) => x.id === c.id);
+      if (b) Object.assign(c, { label: b.label, type: b.type, key: b.key, list: b.list });
+    });
   }
   return state.cols;
 }
@@ -1255,7 +1261,7 @@ function cardHTML(s, i) {
   <div class="shot-h">
     <span class="grip" draggable="true" title="拖动排序">⠿</span>
     <span class="badge-no">镜 ${String(i + 1).padStart(2, "0")}</span>
-    <input class="scene" data-id="${s.id}" data-field="scene" value="${esc(s.scene)}" placeholder="场次 / 场景，如 1. 咖啡馆 日 内">
+    <input class="scene" data-id="${s.id}" data-field="scene" value="${esc(s.scene)}" placeholder="场景名，如 1. 咖啡馆 日 内">
     <span class="tc" data-tc="${s.id}">${mmss(t0)} – ${mmss(t0 + (+s.duration || 0))}</span>
     <span class="acts">
       ${state.video ? `<button class="mini" data-act="play" data-id="${s.id}" title="跳到源视频对应位置">▶</button>` : ""}
@@ -1373,7 +1379,7 @@ function updateDerived() { renderTimeline(); updateStats(); }
 const SCENE_RE = /^(内景|外景|INT\.?|EXT\.?)/i;
 function isSceneHeading(l) {
   if (SCENE_RE.test(l)) return true;
-  if (/^场次?\s*[:：]/.test(l)) return true;
+  if (/^(场次|场景名|场景)\s*[:：]/.test(l)) return true;
   if (l.length <= 26 && /^\d{1,3}\s*[\.、．]\s*\S/.test(l) && /(内景|外景|日|夜|晨|昏|景)/.test(l)) return true;
   return false;
 }
@@ -1617,7 +1623,7 @@ function paintLightbox() {
   const ims = shotImages(s);
   if (lbSlot >= ims.length) lbSlot = Math.max(0, ims.length - 1);
   const im = ims[lbSlot];
-  $("#lbTitle").textContent = `镜 ${String(lbIndex + 1).padStart(2, "0")} · ${s.scene || "未填场次"} · ${durStr(s.duration)}s`
+  $("#lbTitle").textContent = `镜 ${String(lbIndex + 1).padStart(2, "0")} · ${s.scene || "未填场景名"} · ${durStr(s.duration)}s`
     + (ims.length ? " · " + rowLabel(lbSlot) : "");
   $("#lbPos").textContent = `${lbIndex + 1} / ${state.shots.length}` + (ims.length > 1 ? ` · 第 ${lbSlot + 1}/${ims.length} 行` : "");
   $("#lbImg").innerHTML = rowHasImg(im)
@@ -1794,7 +1800,7 @@ function aiPrompt() {
   return `你是资深影视分镜师。请把我提供的剧本/文案拆解成可直接拍摄的分镜表。
 
 严格要求：只输出 JSON，不要任何解释、不要 markdown 代码块标记。格式如下：
-{"shots":[{"scene":"场次，如 1. 咖啡馆 日 内","size":"景别","angle":"机位角度","move":"运镜","transition":"转场","duration":3,"picture":"画面内容，一句话说清谁在哪做什么","dialogue":"台词或旁白，格式 角色：台词；没有就留空","sfx":"音效或BGM，可留空","note":"拍摄备注，可留空"}]}
+{"shots":[{"scene":"场景名，如 1. 咖啡馆 日 内","size":"景别","angle":"机位角度","move":"运镜","transition":"转场","duration":3,"picture":"画面内容，一句话说清谁在哪做什么","dialogue":"台词或旁白，格式 角色：台词；没有就留空","sfx":"音效或BGM，可留空","note":"拍摄备注，可留空"}]}
 
 约束：
 - size 只能取：大远景、远景、全景、中景、中近景、近景、特写、大特写
@@ -1822,7 +1828,7 @@ function parseLoose(txt) {
   return arr;
 }
 const FIELD_ALIAS = {
-  scene: ["scene", "场次", "场景", "镜头场景"],
+  scene: ["scene", "场景名", "场次", "场景", "镜头场景"],
   size: ["size", "景别", "镜头景别"],
   angle: ["angle", "角度", "机位", "机位角度"],
   move: ["move", "运镜", "运动", "镜头运动"],
@@ -2501,7 +2507,7 @@ async function exportEverything() {
     }));
     out.projects.push(d);
   }
-  download("分镜台-全部项目备份-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(out), "application/json");
+  download("拉片工坊-全部项目备份-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(out), "application/json");
   toast("已导出全部 " + out.projects.length + " 个项目（含图片），存到平板文件里就很安全。");
 }
 async function applyProjectRecord(rec) {
@@ -2604,7 +2610,7 @@ function bind() {
     try {
       const ok = navigator.storage && navigator.storage.persist ? await navigator.storage.persist() : false;
       toast(ok ? "已开启长期保存：浏览器不会再自动清理这些数据。"
-               : "浏览器这次没批准。把分镜台「添加到主屏幕」并常用它，通常就会批准；不批准也不会丢，只是空间紧张时可能被清理。", null, ok ? null : "warn");
+               : "浏览器这次没批准。把拉片工坊「添加到主屏幕」并常用它，通常就会批准；不批准也不会丢，只是空间紧张时可能被清理。", null, ok ? null : "warn");
       refreshStorageInfo();
     } catch (e) {}
   };
@@ -2996,7 +3002,7 @@ function bind() {
 function showFatal(err) {
   const box = document.createElement("div");
   box.style.cssText = "position:fixed;inset:0;z-index:9999;background:#fff;color:#151922;padding:26px;overflow:auto;font:14px/1.7 system-ui,'Microsoft YaHei'";
-  box.innerHTML = `<h2 style="margin:0 0 6px">分镜台启动时遇到问题</h2>
+    box.innerHTML = `<h2 style="margin:0 0 6px">拉片工坊启动时遇到问题</h2>
     <p style="color:#68727f;margin:0 0 14px">你的数据还在浏览器本地，通常没有丢。建议先点左边按钮导出备份，再重试。</p>
     <pre style="white-space:pre-wrap;background:#f4f6fa;border:1px solid #e3e7ef;border-radius:8px;padding:12px;margin:0 0 14px;font-size:12px">${esc(String((err && err.stack) || err))}</pre>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
