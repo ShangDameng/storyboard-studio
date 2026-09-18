@@ -128,6 +128,13 @@
   .shot-row{display:grid;grid-template-columns:230px minmax(0,1fr);gap:12px;align-items:start;min-width:0}
   .rowfields{display:flex;flex-direction:column;gap:10px;min-width:0}
   .shot-tools{max-width:230px}
+  /* 行内拖拽换序的手柄：鼠标和触屏都能用 */
+  .rowgrip{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#98a2b3;background:#f4f6fa;
+    border:1px dashed var(--line-strong);border-radius:6px;padding:2px 8px;margin-bottom:6px;cursor:grab;
+    touch-action:none;user-select:none}
+  .rowgrip:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+  .row-drop-target{box-shadow:inset 0 0 0 2px var(--accent);border-radius:8px}
+  .row-dragging{opacity:.5}
   .shot-main{display:flex;flex-direction:column;gap:10px;min-width:0}
   .thumb{
     aspect-ratio:16/9;max-height:330px;width:100%;padding:0;overflow:hidden;border-radius:8px;border:1px dashed #ccd5e4;
@@ -566,15 +573,13 @@
       <span class="hint" id="lbPos"></span>
       <button type="button" class="dlg-x" data-close="1" title="关闭" aria-label="关闭">✕</button>
     </div>
-    <div class="lb-img" id="lbImg" title="把图片拖到这里也可以"></div>
+    <div class="lb-img" id="lbImg"></div>
     <div class="lb-bot">
       <button id="lbPrev">◀ 上一个</button>
       <button id="lbNext">下一个 ▶</button>
       <button id="lbPrevRow">▲ 上一行</button>
       <button id="lbNextRow">▼ 下一行</button>
       <span style="flex:1"></span>
-      <button id="lbUpload">上传图片</button>
-      <button id="lbClear">清除</button>
       <button class="primary" id="lbClose">关闭</button>
     </div>
   </div>
@@ -680,8 +685,8 @@ const totalDur = () => state.shots.reduce((a, s) => a + (+s.duration || 0), 0);
 const sizeClass = (sz) => FAR.has(sz) ? "s-far" : CLOSE.has(sz) ? "s-close" : "s-mid";
 /* ---------- 一个镜号内的多行画面 ---------- */
 const MAX_ROWS = 10;
-const ROW_LABELS = ["起幅", "中段", "落幅"];
-const rowLabel = (k) => ROW_LABELS[k] || "画面" + (k + 1);
+/* 一个镜号里的每一行画面统一叫「画面1 / 画面2 …」（不再用起幅/中段/落幅） */
+const rowLabel = (k) => "画面" + (k + 1);
 /* 镜头里的画面行数组（老数据只有单张图，这里自动升级成一行） */
 function shotImages(s) {
   if (!Array.isArray(s.images)) s.images = [];
@@ -737,7 +742,7 @@ function syncLegacyImage(s) {
   s.note = r0.note || "";
   s.duration = rows.reduce((a, r) => a + (+(r && r.duration) || 0), 0);
 }
-/* 多行字段合成一条，导出 / 打印用：起幅：… ／ 中段：… */
+/* 多行字段合成一条，导出 / 打印用：画面1：… ／ 画面2：… */
 function shotField(s, key) {
   const rows = shotImages(s);
   const vals = rows.map((r) => (r && r[key] != null && String(r[key]).trim() !== "" ? String(r[key]).trim() : ""));
@@ -1050,8 +1055,9 @@ function noteWithExtras(r) {
 function imgStackHTML(s, i) {
   const ims = shotImages(s);
   const slots = ims.length ? ims : [rowFromShot(s)];
-  return `<div class="shot-rows">${slots.map((im, k) => `<div class="shot-row">
+  return `<div class="shot-rows">${slots.map((im, k) => `<div class="shot-row" data-rowdrop="1" data-id="${s.id}" data-slot="${k}">
       <span class="thumbwrap">
+      <span class="rowgrip" data-rowdrag="1" data-id="${s.id}" data-slot="${k}" ${""}title="拖动这一行可以换顺序" draggable="true">⠿ 拖动换序</span>
       <span class="slotlabel">${rowLabel(k)}</span>
       <button type="button" class="thumb" data-id="${s.id}" data-slot="${k}" data-act="lb"
         style="aspect-ratio:${imgAspect(im).toFixed(4)}" title="点开看大图（只用于查看）">
@@ -1061,10 +1067,6 @@ function imgStackHTML(s, i) {
       <div class="row">
         <button class="mini2" data-act="img" data-id="${s.id}" data-slot="${k}">上传</button>
         <button class="mini2" data-act="imgclear" data-id="${s.id}" data-slot="${k}">清除</button>
-      </div>
-      <div class="row">
-        <button class="mini" data-act="rowup" data-id="${s.id}" data-slot="${k}" title="这一行往上移"${k === 0 ? " disabled" : ""}>↑</button>
-        <button class="mini" data-act="rowdown" data-id="${s.id}" data-slot="${k}" title="这一行往下移"${k === slots.length - 1 ? " disabled" : ""}>↓</button>
       </div>
       </span>
       <div class="rowfields">
@@ -1305,7 +1307,7 @@ function tableHTML() {
         <button class="mini2" data-act="down" data-id="${s.id}">↓</button>
         <button class="mini2" data-act="del" data-id="${s.id}">删除</button>
       </div></td>` : "";
-      return `<tr class="${first ? "tr-first" : ""}">${cells}${ops}</tr>`;
+      return `<tr class="${first ? "tr-first" : ""}" data-rowdrop="1" data-id="${s.id}" data-slot="${k}">${cells}${ops}</tr>`;
     }).join("");
   }).join("");
   return `<div class="tbl-tools">
@@ -1349,7 +1351,7 @@ function imgCellHTML(s, i, r, k, last, count) {
     <span class="thumbwrap">
       <span class="slotlabel">${rowLabel(k)}</span>
       <button type="button" class="thumb thumb-tbl" data-id="${s.id}" data-slot="${k}" data-act="lb"
-        style="aspect-ratio:${imgAspect(r).toFixed(4)}" title="点开看大图；也可 Ctrl+V 粘贴 / 拖入图片">
+        style="aspect-ratio:${imgAspect(r).toFixed(4)}" title="点开看大图（只用于查看）">
         ${rowHasImg(r) ? `<img src="${rowSrc(r)}" alt="镜头 ${i + 1} ${rowLabel(k)}">` : `<span class="thumb-empty"><span>＋ 画面</span></span>`}
       </button>
     </span>
@@ -1357,10 +1359,7 @@ function imgCellHTML(s, i, r, k, last, count) {
       <button class="mini2" data-act="img" data-id="${s.id}" data-slot="${k}">上传</button>
       <button class="mini2" data-act="imgclear" data-id="${s.id}" data-slot="${k}">清除</button>
     </div>
-    <div class="row">
-      <button class="mini" data-act="rowup" data-id="${s.id}" data-slot="${k}" title="这一行往上移"${k === 0 ? " disabled" : ""}>↑</button>
-      <button class="mini" data-act="rowdown" data-id="${s.id}" data-slot="${k}" title="这一行往下移"${k === count - 1 ? " disabled" : ""}>↓</button>
-    </div>
+    <span class="rowgrip" data-rowdrag="1" data-id="${s.id}" data-slot="${k}" title="拖动这一行可以换顺序" draggable="true">⠿ 拖动换序</span>
     ${last && count < MAX_ROWS ? `<button class="addrow" data-act="addrow" data-id="${s.id}">＋ 加一行（${Math.max(count, 1) + 1}/${MAX_ROWS}）</button>` : ""}
     ${last && count >= MAX_ROWS ? `<button class="mini2" data-act="delrow" data-id="${s.id}">删最后一行</button>` : ""}
   </div>`;
@@ -1640,7 +1639,7 @@ function paintLightbox() {
   $("#lbPos").textContent = `${lbIndex + 1} / ${state.shots.length}` + (ims.length > 1 ? ` · 第 ${lbSlot + 1}/${ims.length} 行` : "");
   $("#lbImg").innerHTML = rowHasImg(im)
     ? `<img src="${rowSrc(im)}" alt="镜头 ${lbIndex + 1} ${rowLabel(lbSlot)}">`
-    : `<div class="lb-empty">这一行还没有画面<br><small>点右下「上传图片」，或直接 Ctrl+V 粘贴</small></div>`;
+    : `<div class="lb-empty">这一行还没有画面<br><small>关掉这个窗口，点缩略图下面的「上传」就能加</small></div>`;
   $("#lbPrev").disabled = lbIndex <= 0;
   $("#lbNext").disabled = lbIndex >= state.shots.length - 1;
   $("#lbPrevRow").disabled = lbSlot <= 0;
@@ -2776,17 +2775,6 @@ function bind() {
           const ims = shotImages(s);
           if (ims.length) { ims.pop(); syncLegacyImage(s); renderShots(); save(); }
         }
-        else if (b.dataset.act === "rowup" || b.dataset.act === "rowdown") {
-          const s = shotById(id); if (!s) return;
-          const ims = shotImages(s);
-          const k = +(b.dataset.slot || 0);
-          const to = b.dataset.act === "rowup" ? k - 1 : k + 1;
-          if (k < 0 || to < 0 || k >= ims.length || to >= ims.length) return;
-          const tmp = ims[k]; ims[k] = ims[to]; ims[to] = tmp;
-          syncLegacyImage(s);          // 第一行的图会跟着变，镜头级字段重新对齐
-          renderShots(); save();
-          toast("已" + (b.dataset.act === "rowup" ? "上移" : "下移") + "这一行画面（现在是第 " + (to + 1) + " 行）。");
-        }
         else if (b.dataset.act === "addcol") {
           const label = prompt("新的一列叫什么？例如：道具、参考片、注意事项", "");
           if (label == null) return;
@@ -2820,16 +2808,6 @@ function bind() {
   $("#lbPrevRow").onclick = () => lightboxRow(-1);
   $("#lbNextRow").onclick = () => lightboxRow(1);
   $("#lbClose").onclick = () => $("#imgDlg").close();
-  $("#lbUpload").onclick = () => {
-    const s = state.shots[lbIndex]; if (!s) return;
-    pendingImgId = s.id; pendingImgSlot = lbSlot;
-    $("#imgPick").click();
-  };
-  $("#lbClear").onclick = () => {
-    const s = state.shots[lbIndex]; if (!s) return;
-    setShotImage(s.id, lbSlot, "");
-    paintLightbox();
-  };
   $("#imgPick").addEventListener("change", (e) => {
     const f = e.target.files[0]; e.target.value = "";
     if (f && pendingImgId) fileToImage(f, pendingImgId, pendingImgSlot);
@@ -2922,16 +2900,10 @@ function bind() {
     }
   });
   document.addEventListener("dragover", (e) => {
-    const th = e.target.closest(".thumb") || e.target.closest(".lb-img");
+    const th = e.target.closest(".thumb");
     if (th && e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files")) { e.preventDefault(); }
   });
   document.addEventListener("drop", (e) => {
-    if (e.dataTransfer && e.dataTransfer.files.length && e.target.closest(".lb-img") && state.shots[lbIndex]) {
-      e.preventDefault();
-      fileToImage(e.dataTransfer.files[0], state.shots[lbIndex].id, lbSlot);
-      toast("画面已导入。");
-      return;
-    }
     const th = e.target.closest(".thumb");
     if (!th || !e.dataTransfer || !e.dataTransfer.files.length) return;
     e.preventDefault();
@@ -2974,6 +2946,72 @@ function bind() {
 
   /* 表格：拖动表头调整列顺序（列里的内容跟着列走） */
   let dragCol = null;
+  /* 行拖拽换序：鼠标走 HTML5 drag，触屏走 Pointer 事件（平板也能拖） */
+  let dragRow = null, ptrRow = null;
+  const sameShotRow = (from, to) => from && to && from.id === to.id && from.slot !== to.slot;
+  function moveRowTo(from, to) {
+    const s = shotById(from.id); if (!s) return false;
+    const ims = shotImages(s);
+    if (from.slot < 0 || to.slot < 0 || from.slot >= ims.length || to.slot >= ims.length) return false;
+    const [row] = ims.splice(from.slot, 1);
+    ims.splice(to.slot, 0, row);
+    syncLegacyImage(s);
+    return true;
+  }
+  const clearRowMarks = () => document.querySelectorAll(".row-drop-target,.row-dragging")
+    .forEach((el) => el.classList.remove("row-drop-target", "row-dragging"));
+  document.addEventListener("dragstart", (e) => {
+    const h = e.target.closest("[data-rowdrag]"); if (!h) return;
+    dragRow = { id: h.dataset.id, slot: +h.dataset.slot };
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", "row"); } catch (err) {}
+    const box = h.closest("[data-rowdrop]"); if (box) box.classList.add("row-dragging");
+  });
+  document.addEventListener("dragover", (e) => {
+    if (!dragRow) return;
+    const t = e.target.closest("[data-rowdrop]"); if (!t) return;
+    if (t.dataset.id !== dragRow.id) return;        // 只在同一个镜号内换序
+    e.preventDefault();
+    clearRowMarks();
+    t.classList.add("row-drop-target");
+  });
+  document.addEventListener("drop", (e) => {
+    if (!dragRow) return;
+    const t = e.target.closest("[data-rowdrop]"); if (!t) return;
+    e.preventDefault();
+    const to = { id: t.dataset.id, slot: +t.dataset.slot };
+    const ok = sameShotRow(dragRow, to) && moveRowTo(dragRow, to);
+    dragRow = null; clearRowMarks();
+    if (ok) { renderShots(); save(); toast("已把这一行移到第 " + (to.slot + 1) + " 张画面。"); }
+  });
+  document.addEventListener("dragend", () => { dragRow = null; clearRowMarks(); });
+  document.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse") return;          // 鼠标交给上面的 HTML5 drag
+    const h = e.target.closest("[data-rowdrag]"); if (!h) return;
+    ptrRow = { id: h.dataset.id, slot: +h.dataset.slot, target: null };
+    try { h.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  document.addEventListener("pointermove", (e) => {
+    if (!ptrRow) return;
+    e.preventDefault();
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const t = el && el.closest("[data-rowdrop]");
+    clearRowMarks();
+    if (!t || t.dataset.id !== ptrRow.id) { ptrRow.target = null; return; }
+    ptrRow.target = { id: t.dataset.id, slot: +t.dataset.slot };
+    t.classList.add("row-drop-target");
+  }, { passive: false });
+  const endPtrRow = () => {
+    if (!ptrRow) return;
+    const to = ptrRow.target;
+    if (to && sameShotRow(ptrRow, to) && moveRowTo(ptrRow, to)) {
+      renderShots(); save();
+      toast("已把这一行移到第 " + (to.slot + 1) + " 张画面。");
+    }
+    ptrRow = null; clearRowMarks();
+  };
+  document.addEventListener("pointerup", endPtrRow);
+  document.addEventListener("pointercancel", endPtrRow);
   wrap.addEventListener("dragstart", (e) => {
     const th = e.target.closest("th[data-col]"); if (!th) return;
     dragCol = th.dataset.col;
