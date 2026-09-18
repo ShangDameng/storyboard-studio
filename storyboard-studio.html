@@ -626,7 +626,7 @@
    ============================================================ */
 
 const SIZES = ["大远景","远景","全景","中景","中近景","近景","特写","大特写"];
-const ANGLES = ["平视","俯视","仰视","侧拍","过肩","主观视角","鸟瞰"];
+const ANGLES = ["平视","俯视","仰视","斜侧","背面","侧拍","过肩","主观视角","鸟瞰"];
 const MOVES = ["固定","推","拉","摇","移","跟","升降","环绕","手持","变焦"];
 const TRANS = ["切","叠化","淡入","淡出","划像","跳切","匹配剪辑"];
 const LS_KEY = "sb_studio_v1";
@@ -1054,10 +1054,18 @@ function imgStackHTML(s, i) {
       <span class="thumbwrap">
       <span class="slotlabel">${rowLabel(k)}</span>
       <button type="button" class="thumb" data-id="${s.id}" data-slot="${k}" data-act="lb"
-        style="aspect-ratio:${imgAspect(im).toFixed(4)}" title="点开看大图；也可 Ctrl+V 粘贴 / 拖入图片">
+        style="aspect-ratio:${imgAspect(im).toFixed(4)}" title="点开看大图（只用于查看）">
         ${rowHasImg(im) ? `<img src="${rowSrc(im)}" alt="镜头 ${i + 1} ${rowLabel(k)}">`
-          : `<span class="thumb-empty"><span>＋ 画面</span><small>点击后 Ctrl+V</small><small>或拖入图片</small></span>`}
+          : `<span class="thumb-empty"><span>＋ 画面</span><small>点下面的「上传」</small><small>或把图片拖进来</small></span>`}
       </button>
+      <div class="row">
+        <button class="mini2" data-act="img" data-id="${s.id}" data-slot="${k}">上传</button>
+        <button class="mini2" data-act="imgclear" data-id="${s.id}" data-slot="${k}">清除</button>
+      </div>
+      <div class="row">
+        <button class="mini" data-act="rowup" data-id="${s.id}" data-slot="${k}" title="这一行往上移"${k === 0 ? " disabled" : ""}>↑</button>
+        <button class="mini" data-act="rowdown" data-id="${s.id}" data-slot="${k}" title="这一行往下移"${k === slots.length - 1 ? " disabled" : ""}>↓</button>
+      </div>
       </span>
       <div class="rowfields">
         <label class="fld"><span>${rowLabel(k)} · 画面内容</span>
@@ -1348,6 +1356,10 @@ function imgCellHTML(s, i, r, k, last, count) {
     <div class="row">
       <button class="mini2" data-act="img" data-id="${s.id}" data-slot="${k}">上传</button>
       <button class="mini2" data-act="imgclear" data-id="${s.id}" data-slot="${k}">清除</button>
+    </div>
+    <div class="row">
+      <button class="mini" data-act="rowup" data-id="${s.id}" data-slot="${k}" title="这一行往上移"${k === 0 ? " disabled" : ""}>↑</button>
+      <button class="mini" data-act="rowdown" data-id="${s.id}" data-slot="${k}" title="这一行往下移"${k === count - 1 ? " disabled" : ""}>↓</button>
     </div>
     ${last && count < MAX_ROWS ? `<button class="addrow" data-act="addrow" data-id="${s.id}">＋ 加一行（${Math.max(count, 1) + 1}/${MAX_ROWS}）</button>` : ""}
     ${last && count >= MAX_ROWS ? `<button class="mini2" data-act="delrow" data-id="${s.id}">删最后一行</button>` : ""}
@@ -2668,6 +2680,23 @@ function bind() {
       try {
         const d = JSON.parse(fr.result);
         if (Array.isArray(d)) { importAI(fr.result); return; }
+        /* 「导出全部项目」的备份：{type:"fenjingtai-all", projects:[...]} —— 整个导回项目库 */
+        const pack = (d && Array.isArray(d.projects)) ? d.projects : null;
+        if (pack) {
+          let n = 0;
+          for (const p of pack) {
+            if (!p || !Array.isArray(p.shots)) continue;
+            const id = "p" + uid();
+            const one = Object.assign({}, p, { id: id, savedAt: Date.now() });
+            await idbProjPut(id, JSON.stringify(one));
+            n++;
+          }
+          if (!n) throw new Error("这个备份里没有可用的项目");
+          await renderProjectList();
+          await openProjectDialog();
+          toast("已从整机备份导入 " + n + " 个项目，在「项目库」里点「打开」即可使用。");
+          return;
+        }
         if (!d || !Array.isArray(d.shots)) throw new Error("不是分镜项目文件");
         state = Object.assign(freshState(), d);
         state.settings = Object.assign(freshState().settings, d.settings || {});
@@ -2746,6 +2775,17 @@ function bind() {
           const s = shotById(id); if (!s) return;
           const ims = shotImages(s);
           if (ims.length) { ims.pop(); syncLegacyImage(s); renderShots(); save(); }
+        }
+        else if (b.dataset.act === "rowup" || b.dataset.act === "rowdown") {
+          const s = shotById(id); if (!s) return;
+          const ims = shotImages(s);
+          const k = +(b.dataset.slot || 0);
+          const to = b.dataset.act === "rowup" ? k - 1 : k + 1;
+          if (k < 0 || to < 0 || k >= ims.length || to >= ims.length) return;
+          const tmp = ims[k]; ims[k] = ims[to]; ims[to] = tmp;
+          syncLegacyImage(s);          // 第一行的图会跟着变，镜头级字段重新对齐
+          renderShots(); save();
+          toast("已" + (b.dataset.act === "rowup" ? "上移" : "下移") + "这一行画面（现在是第 " + (to + 1) + " 行）。");
         }
         else if (b.dataset.act === "addcol") {
           const label = prompt("新的一列叫什么？例如：道具、参考片、注意事项", "");
